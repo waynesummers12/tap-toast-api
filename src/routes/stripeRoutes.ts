@@ -6,7 +6,7 @@ const router = express.Router()
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string)
 
-router.post("/create-deposit-session", async (req, res) => {
+router.post("/create-checkout-session", async (req, res) => {
   try {
 
     const { event_id } = req.body
@@ -44,8 +44,8 @@ router.post("/create-deposit-session", async (req, res) => {
         }
       ],
 
-      success_url: `http://localhost:3000/success?event_id=${event.id}`,
-      cancel_url: "http://localhost:3000/book"
+      success_url: `https://tapandtoast.org/success?event_id=${event.id}`,
+      cancel_url: "https://tapandtoast.org/book"
     })
 
     res.json({
