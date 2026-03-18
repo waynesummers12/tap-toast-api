@@ -1,5 +1,3 @@
-
-
 import { Resend } from "resend"
 
 const resend = new Resend(process.env.RESEND_API_KEY)
@@ -7,7 +5,7 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 export async function sendBookingConfirmation(event: any) {
   try {
     await resend.emails.send({
-      from: "Tap & Toast <bookings@tapandtoast.org>",
+      from: "Tap & Toast <bookings@coloradotapntoast.com>",
       to: event.email,
       subject: "🎉 Your Tap & Toast Event is Confirmed",
       html: `

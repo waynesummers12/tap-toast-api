@@ -44,8 +44,8 @@ router.post("/create-checkout-session", async (req, res) => {
         }
       ],
 
-      success_url: `https://tapandtoast.org/success?event_id=${event.id}`,
-      cancel_url: "https://tapandtoast.org/book"
+      success_url: `https://coloradotapntoast.com/success?event_id=${event.id}`,
+      cancel_url: "https://coloradotapntoast.com/book"
     })
 
     res.json({
@@ -62,4 +62,4 @@ router.post("/create-checkout-session", async (req, res) => {
   }
 })
 
-module.exports = router
+export default router
