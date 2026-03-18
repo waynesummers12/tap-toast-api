@@ -25,7 +25,7 @@ router.post("/create-checkout-session", async (req, res) => {
       mode: "payment",
       payment_method_types: ["card"],
 
-      customer_email: event.email,
+      customer_email: "jen@coloradotapandtoast.com",
 
       metadata: {
         event_id: event.id
@@ -44,8 +44,8 @@ router.post("/create-checkout-session", async (req, res) => {
         }
       ],
 
-      success_url: `https://coloradotapntoast.com/success?event_id=${event.id}`,
-      cancel_url: "https://coloradotapntoast.com/book"
+      success_url: `https://www.coloradotapandtoast.com/success?event_id=${event.id}`,
+      cancel_url: "https://www.coloradotapandtoast.com/book"
     })
 
     res.json({
@@ -62,4 +62,4 @@ router.post("/create-checkout-session", async (req, res) => {
   }
 })
 
-export default router
+module.exports = router
