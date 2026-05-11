@@ -17,7 +17,6 @@ const supabase = createClient(
 
 router.post(
   "/api/webhook",
-  express.raw({ type: "application/json" }),
   async (req, res) => {
     const sig = req.headers["stripe-signature"] as string
 
