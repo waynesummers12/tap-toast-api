@@ -13,6 +13,7 @@ router.post("/book-event", async (req: any, res: any) => {
       email,
       phone,
       event_date,
+      start_time,
       location,
       guest_count,
       hours,
@@ -69,6 +70,7 @@ router.post("/book-event", async (req: any, res: any) => {
           phone,
 
           event_date,
+           start_time: start_time || "18:00",
           location,
           guest_count: guest_count || null,
           hours: Number(hours),
