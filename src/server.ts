@@ -41,7 +41,7 @@ app.use("/api/events", eventRoutes)
 app.use("/api/bartenders", bartenderRoutes)
 app.use("/api", assignBartendersRoutes)
 app.use("/api", upgradeRoutes)
-app.use("/stripe-webhook", stripeWebhook)
+app.use(stripeWebhook)
 
 // Global error handler (helps debugging on Render)
 app.use((err: any, req: any, res: any, next: any) => {

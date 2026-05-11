@@ -16,7 +16,7 @@ const supabase = createClient(
 )
 
 router.post(
-  "/stripe-webhook",
+  "/api/webhook",
   express.raw({ type: "application/json" }),
   async (req, res) => {
     const sig = req.headers["stripe-signature"] as string
@@ -36,6 +36,7 @@ router.post(
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session
+      console.log("🔥 Webhook received: checkout.session.completed")
 
       const eventId = session.metadata?.event_id
       const paymentType = session.metadata?.type || "deposit"
@@ -90,9 +91,11 @@ router.post(
 
         if (eventData) {
           try {
+            console.log("📧 Sending booking + internal emails...")
             await sendBookingConfirmation(eventData)
             await sendInternalNotification(eventData)
             await createCalendarEvent(eventData)
+            console.log("✅ Emails + calendar event sent")
             console.log("✅ Deposit flow completed")
           } catch (err) {
             console.error("Post-deposit tasks failed", err)
@@ -116,8 +119,10 @@ router.post(
 
         if (eventData) {
           try {
+            console.log("📧 Sending booking + internal emails (balance)...")
             await sendBookingConfirmation(eventData)
             await sendInternalNotification(eventData)
+            console.log("✅ Emails sent (balance)")
             console.log("✅ Balance flow completed")
           } catch (err) {
             console.error("Post-balance tasks failed", err)
