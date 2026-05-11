@@ -39,6 +39,7 @@ import eventRoutes from "./routes/eventRoutes"
 import bartenderRoutes from "./routes/bartenderRoutes"
 import assignBartendersRoutes from "./routes/assign-bartenders"
 import upgradeRoutes from "./routes/upgrade-eventId"
+import availableRoutes from "./routes/availableRoutes"
 
 app.use("/api", bookingRoutes)
 app.use("/api/stripe", stripeRoutes)
@@ -46,16 +47,8 @@ app.use("/api/events", eventRoutes)
 app.use("/api/bartenders", bartenderRoutes)
 app.use("/api", assignBartendersRoutes)
 app.use("/api", upgradeRoutes)
+app.use("/api/availability", availableRoutes)
 app.use(stripeWebhook)
-
-// Global error handler (helps debugging on Render)
-app.use((err: any, req: any, res: any, next: any) => {
-  console.error("🔥 Server Error:", err)
-  res.status(500).json({ error: "Internal Server Error" })
-})
-
-// Start server (IMPORTANT: bind to 0.0.0.0)
-app.use("/api/availability", require("./routes/availableRoutes"))
 
 // Global error handler (helps debugging on Render)
 app.use((err: any, req: any, res: any, next: any) => {
