@@ -67,7 +67,6 @@ router.post("/book-event", async (req: any, res: any) => {
         {
           customer_id: customer.id,
           customer_name: name,
-          customer_email: email,
           phone,
 
           event_date,

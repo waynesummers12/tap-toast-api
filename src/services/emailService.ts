@@ -70,7 +70,7 @@ export async function sendBookingConfirmation(event: any) {
   try {
     await resend.emails.send({
       from: "Tap & Toast <jen@coloradotapandtoast.com>",
-      to: event.customer_email || event.email,
+      to: event.customer?.email || event.customer_email || event.email,
       bcc: INTERNAL_EMAILS,
       subject: "🎉 Your Tap & Toast Event is Confirmed",
       html: `
@@ -87,7 +87,7 @@ export async function sendBookingConfirmation(event: any) {
 
             <h2 style="margin-top: 0;">🎉 Your Event is Confirmed</h2>
 
-            <p>Hi <strong>${event.customer_name || event.name || event.metadata?.customer_name || "there"}</strong>,</p>
+            <p>Hi <strong>${event.customer?.name || event.customer_name || event.name || event.metadata?.customer_name || "there"}</strong>,</p>
 
             <p>
               Your deposit has been successfully received and your event is officially booked.
@@ -200,8 +200,8 @@ export async function sendInternalNotification(event: any) {
       subject: `🚨 New Booking - ${event.event_date}`,
       html: `
         <h2>New Booking 🚨</h2>
-        <p><strong>Name:</strong> ${event.customer_name || event.name || event.metadata?.customer_name || "N/A"}</p>
-        <p><strong>Email:</strong> ${event.customer_email || event.email || event.metadata?.customer_email || "N/A"}</p>
+        <p><strong>Name:</strong> ${event.customer?.name || event.customer_name || event.name || event.metadata?.customer_name || "N/A"}</p>
+        <p><strong>Email:</strong> ${event.customer?.email || event.customer_email || event.email || event.metadata?.customer_email || "N/A"}</p>
         <p><strong>Event Date:</strong> ${event.event_date}</p>
         <p><strong>Event Type:</strong> ${event.event_type || "N/A"}</p>
         <p><strong>Location:</strong> ${event.location || "N/A"}</p>
