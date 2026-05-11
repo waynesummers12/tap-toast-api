@@ -66,7 +66,6 @@ router.post("/book-event", async (req: any, res: any) => {
       .insert([
         {
           customer_id: customer.id,
-          customer_name: name,
           phone,
 
           event_date,
