@@ -3,7 +3,6 @@ import Stripe from "stripe"
 import { createClient } from "@supabase/supabase-js"
 import { sendBookingConfirmation } from "../services/emailService"
 import { createCalendarEvent } from "../services/calendarService"
-import fetch from "node-fetch"
 
 const router = express.Router()
 
