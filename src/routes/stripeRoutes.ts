@@ -39,6 +39,7 @@ router.post("/create-checkout-session", async (req, res) => {
         guests: String(event.guests || ""),
         bartenders: String(event.bartenders || ""),
         hours: String(event.hours || ""),
+        upgrades: JSON.stringify(event.upgrades || []),
         landing_page: landing_page || "unknown",
         type: "deposit"
       },

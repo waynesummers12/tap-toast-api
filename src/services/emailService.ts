@@ -6,6 +6,66 @@ const INTERNAL_EMAILS = [
   "waynesummers12@gmail.com"
 ]
 
+const UPGRADE_LABELS: Record<string, string> = {
+  garnishes: "Premium Garnishes",
+  cocktails: "Signature Cocktails",
+  setupHour: "Extra Setup Hour",
+  extraBartender: "Additional Bartender",
+  customMenu: "Custom Drink Menu"
+}
+
+const UPGRADE_PRICES: Record<string, number> = {
+  garnishes: 75,
+  cocktails: 100,
+  setupHour: 50,
+  extraBartender: 40, // per hour (display only)
+  customMenu: 100
+}
+
+function formatUpgradesWithPricing(upgrades: any): string {
+  try {
+    const parsed = Array.isArray(upgrades)
+      ? upgrades
+      : JSON.parse(upgrades || "[]")
+
+    return parsed
+      .map((key: string) => {
+        const label = UPGRADE_LABELS[key] || key
+        const price = UPGRADE_PRICES[key]
+        return price ? `${label} (+$${price})` : label
+      })
+      .join(", ")
+  } catch {
+    return ""
+  }
+}
+
+function calculateUpgradesTotal(upgrades: any): number {
+  try {
+    const parsed = Array.isArray(upgrades)
+      ? upgrades
+      : JSON.parse(upgrades || "[]")
+
+    return parsed.reduce((sum: number, key: string) => sum + (UPGRADE_PRICES[key] || 0), 0)
+  } catch {
+    return 0
+  }
+}
+
+function formatUpgrades(upgrades: any): string {
+  try {
+    const parsed = Array.isArray(upgrades)
+      ? upgrades
+      : JSON.parse(upgrades || "[]")
+
+    return parsed
+      .map((key: string) => UPGRADE_LABELS[key] || key)
+      .join(", ")
+  } catch {
+    return ""
+  }
+}
+
 export async function sendBookingConfirmation(event: any) {
   try {
     await resend.emails.send({
@@ -27,7 +87,7 @@ export async function sendBookingConfirmation(event: any) {
 
             <h2 style="margin-top: 0;">🎉 Your Event is Confirmed</h2>
 
-            <p>Hi <strong>${event.customer_name || event.name}</strong>,</p>
+            <p>Hi <strong>${event.customer_name || event.name || "there"}</strong>,</p>
 
             <p>
               Your deposit has been successfully received and your event is officially booked.
@@ -40,6 +100,42 @@ export async function sendBookingConfirmation(event: any) {
               <p style="margin: 5px 0;"><strong>Location:</strong> ${event.location}</p>
               <p style="margin: 5px 0;"><strong>Duration:</strong> ${event.hours} hours</p>
               <p style="margin: 5px 0;"><strong>Bartenders:</strong> ${event.bartenders}</p>
+              ${event.upgrades && event.upgrades.length ? `
+                <p style="margin: 5px 0;"><strong>Upgrades:</strong> ${formatUpgradesWithPricing(event.upgrades)}</p>
+                <p style="margin: 5px 0;"><strong>Upgrades Total:</strong> $${calculateUpgradesTotal(event.upgrades)}</p>
+              ` : ''}
+            </div>
+
+            <div style="margin: 20px 0; padding: 15px; background: #1a1a1a; border-radius: 8px;">
+              <h3 style="margin-top: 0; color: #facc15;">Pricing Summary</h3>
+              <p style="margin: 5px 0;"><strong>Base Event:</strong> $${event.base_price || 600}</p>
+              <p style="margin: 5px 0;"><strong>Bartenders:</strong> $${(event.bartenders && event.hours) ? event.bartenders * 40 * event.hours : 0}</p>
+              ${event.upgrades && event.upgrades.length ? `
+                <p style="margin: 5px 0;"><strong>Upgrades:</strong> $${calculateUpgradesTotal(event.upgrades)}</p>
+              ` : ''}
+              <p style="margin: 5px 0; font-weight: bold;">
+                <strong>Estimated Total:</strong> $${
+                  (event.base_price || 600) +
+                  ((event.bartenders && event.hours) ? event.bartenders * 40 * event.hours : 0) +
+                  calculateUpgradesTotal(event.upgrades)
+                }
+              </p>
+              <p style="margin: 5px 0; color: #22c55e; font-weight: bold;">
+                <strong>Deposit Paid:</strong> $${Math.round(((event.base_price || 600) + ((event.bartenders && event.hours) ? event.bartenders * 40 * event.hours : 0) + calculateUpgradesTotal(event.upgrades)) * 0.5)}
+              </p>
+
+              <p style="margin: 5px 0; color: #facc15; font-weight: bold;">
+                <strong>Remaining Balance:</strong> $${
+                  ((event.base_price || 600) +
+                  ((event.bartenders && event.hours) ? event.bartenders * 40 * event.hours : 0) +
+                  calculateUpgradesTotal(event.upgrades)) -
+                  Math.round(((event.base_price || 600) + ((event.bartenders && event.hours) ? event.bartenders * 40 * event.hours : 0) + calculateUpgradesTotal(event.upgrades)) * 0.5)
+                }
+              </p>
+
+              <p style="margin: 5px 0; font-size: 12px; color: #aaa;">
+                Due 10 days prior to your event
+              </p>
             </div>
 
             <p>
@@ -104,11 +200,15 @@ export async function sendInternalNotification(event: any) {
       subject: `🚨 New Booking - ${event.event_date}`,
       html: `
         <h2>New Booking 🚨</h2>
-        <p><strong>Name:</strong> ${event.customer_name || event.name}</p>
-        <p><strong>Email:</strong> ${event.customer_email || event.email}</p>
+        <p><strong>Name:</strong> ${event.customer_name || event.name || "N/A"}</p>
+        <p><strong>Email:</strong> ${event.customer_email || event.email || "N/A"}</p>
         <p><strong>Event Date:</strong> ${event.event_date}</p>
         <p><strong>Event Type:</strong> ${event.event_type || "N/A"}</p>
         <p><strong>Location:</strong> ${event.location || "N/A"}</p>
+        ${event.upgrades && event.upgrades.length ? `
+          <p><strong>Upgrades:</strong> ${formatUpgradesWithPricing(event.upgrades)}</p>
+          <p><strong>Upgrades Total:</strong> $${calculateUpgradesTotal(event.upgrades)}</p>
+        ` : ''}
       `,
     })
 
