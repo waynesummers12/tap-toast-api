@@ -9,7 +9,7 @@ const INTERNAL_EMAILS = [
 export async function sendBookingConfirmation(event: any) {
   try {
     await resend.emails.send({
-      from: "Tap & Toast <bookings@coloradotapandtoast.com>",
+      from: "Tap & Toast <jen@coloradotapandtoast.com>",
       to: event.customer_email || event.email,
       bcc: INTERNAL_EMAILS,
       subject: "🎉 Your Tap & Toast Event is Confirmed",
@@ -45,8 +45,8 @@ export async function sendBookingConfirmation(event: any) {
 export async function sendInternalNotification(event: any) {
   try {
     await resend.emails.send({
-      from: "Tap & Toast Alerts <alerts@coloradotapandtoast.com>",
-      to: ["jen@coloradotapandtoast.com", "waynesummers@microsoft.com"],
+      from: "Tap & Toast Alerts <jen@coloradotapandtoast.com>",
+      to: ["jen@coloradotapandtoast.com", "waynesummers12@gmail.com"],
       subject: `🚨 New Booking - ${event.event_date}`,
       html: `
         <h2>New Booking 🚨</h2>
