@@ -55,6 +55,30 @@ export async function sendBookingConfirmation(event: any) {
               </p>
             </div>
 
+            <div style="text-align: center; margin: 25px 0;">
+              <a href="https://www.coloradotapandtoast.com/upgrade?eventId=${event.id || event.event_id}" 
+                 style="display: inline-block; background: linear-gradient(to right, #facc15, #eab308); color: #000; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 14px;">
+                Upgrade Your Event Experience
+              </a>
+            </div>
+
+            <div style="text-align: center; margin: 10px 0 25px 0;">
+              <a href="https://calendar.google.com/calendar/render?action=TEMPLATE&text=Tap+%26+Toast+Event&dates=${(() => {
+  const startHour = Number(event.start_time || 18) // default 6pm
+  const duration = Number(event.hours || 4)
+
+  const start = new Date(`${event.event_date}T${String(startHour).padStart(2, '0')}:00:00`)
+  const end = new Date(start.getTime() + duration * 60 * 60 * 1000)
+
+  const format = (d: Date) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+
+  return `${format(start)}/${format(end)}`
+})()}&details=Tap+%26+Toast+Mobile+Bar+Service&location=${encodeURIComponent(event.location || '')}" 
+                 style="display: inline-block; background: #ffffff; color: #000; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 13px; border: 1px solid #ddd;">
+                📅 Add to Google Calendar
+              </a>
+            </div>
+
             <p style="margin-top: 30px;">Cheers,</p>
             <p style="margin: 0;">Tap & Toast 🍸</p>
 
