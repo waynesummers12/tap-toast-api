@@ -15,7 +15,7 @@ export async function sendCustomerConfirmationEmail({
   amountPaid: number;
 }) {
   await resend.emails.send({
-    from: "Colorado Tap & Toast <noreply@yourdomain.com>",
+    from: "Colorado Tap & Toast <jen@coloradotapandtoast.com>",
     to,
     subject: "You're booked! 🎉 Colorado Tap & Toast",
     html: `
@@ -52,8 +52,8 @@ export async function sendInternalNotificationEmail({
   amountPaid: number;
 }) {
   await resend.emails.send({
-    from: "Tap & Toast Alerts <alerts@yourdomain.com>",
-    to: ["jen@coloradotapandtoast.com", "your@email.com"],
+    from: "Tap & Toast Alerts <jen@coloradotapandtoast.com>",
+    to: ["jen@coloradotapandtoast.com", "waynesummers12@gmail.com"],
     subject: "🚨 New Booking Received",
     html: `
       <h2>New Booking 🚨</h2>
