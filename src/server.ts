@@ -32,12 +32,14 @@ import stripeWebhook from "./routes/stripeWebhook"
 import eventRoutes from "./routes/eventRoutes"
 import bartenderRoutes from "./routes/bartenderRoutes"
 import assignBartendersRoutes from "./routes/assign-bartenders"
+import upgradeRoutes from "./routes/upgrade-eventId"
 
 app.use("/api", bookingRoutes)
 app.use("/api/stripe", stripeRoutes)
 app.use("/api/events", eventRoutes)
 app.use("/api/bartenders", bartenderRoutes)
 app.use("/api", assignBartendersRoutes)
+app.use("/api", upgradeRoutes)
 app.use("/stripe-webhook", stripeWebhook)
 
 // Global error handler (helps debugging on Render)
