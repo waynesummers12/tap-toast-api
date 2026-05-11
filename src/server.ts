@@ -39,7 +39,7 @@ import eventRoutes from "./routes/eventRoutes"
 import bartenderRoutes from "./routes/bartenderRoutes"
 import assignBartendersRoutes from "./routes/assign-bartenders"
 import upgradeRoutes from "./routes/upgrade-eventId"
-import availableRoutes from "./routes/availableRoutes"
+const availableRoutes = require("./routes/availableRoutes")
 
 app.use("/api", bookingRoutes)
 app.use("/api/stripe", stripeRoutes)

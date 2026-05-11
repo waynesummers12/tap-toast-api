@@ -26,4 +26,5 @@ router.get("/availability", async (req, res) => {
   res.json({ bookedDates })
 })
 
-export default router
+module.exports = router
+module.exports.default = router
