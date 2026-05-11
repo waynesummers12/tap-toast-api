@@ -3,6 +3,7 @@ import Stripe from "stripe"
 import { createClient } from "@supabase/supabase-js"
 import { sendBookingConfirmation } from "../services/emailService"
 import { createCalendarEvent } from "../services/calendarService"
+import fetch from "node-fetch"
 
 const router = express.Router()
 
@@ -37,8 +38,12 @@ router.post(
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session
 
+      const GA_MEASUREMENT_ID = "G-9T64PY883H"
+      const GA_API_SECRET = process.env.GA_API_SECRET
+
       const eventId = session.metadata?.event_id
       const paymentType = session.metadata?.type || "deposit"
+      const cid = session.metadata?.cid || "stripe-server"
       const stripeSessionId = session.id
 
       if (!eventId) {
@@ -74,6 +79,30 @@ router.post(
           return res.json({ received: true })
         }
 
+        if (GA_API_SECRET) {
+          try {
+            await fetch(`https://www.google-analytics.com/mp/collect?measurement_id=${GA_MEASUREMENT_ID}&api_secret=${GA_API_SECRET}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                client_id: cid,
+                events: [
+                  {
+                    name: "begin_checkout",
+                    params: {
+                      transaction_id: stripeSessionId,
+                      value: session.amount_total ? session.amount_total / 100 : 0,
+                      currency: "USD"
+                    }
+                  }
+                ]
+              })
+            })
+          } catch (err) {
+            console.error("GA tracking failed (deposit)", err)
+          }
+        }
+
         const { data: eventData } = await supabase
           .from("events")
           .select("*")
@@ -103,6 +132,30 @@ router.post(
         if (error) {
           console.error("Balance payment update error:", error)
           return res.json({ received: true })
+        }
+
+        if (GA_API_SECRET) {
+          try {
+            await fetch(`https://www.google-analytics.com/mp/collect?measurement_id=${GA_MEASUREMENT_ID}&api_secret=${GA_API_SECRET}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                client_id: cid,
+                events: [
+                  {
+                    name: "purchase",
+                    params: {
+                      transaction_id: stripeSessionId,
+                      value: session.amount_total ? session.amount_total / 100 : 0,
+                      currency: "USD"
+                    }
+                  }
+                ]
+              })
+            })
+          } catch (err) {
+            console.error("GA tracking failed (purchase)", err)
+          }
         }
 
         console.log("Balance marked paid for event", eventId)

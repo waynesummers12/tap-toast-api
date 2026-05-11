@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "nodemon src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "vercel-build": "npm run build"
   },
   "engines": {
-    "node": ">=18"
+    "node": "18.x"
   },
   "keywords": [],
   "author": "",
