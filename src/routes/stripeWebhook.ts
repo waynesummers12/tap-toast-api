@@ -37,34 +37,43 @@ router.post(
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session
 
-      const GA_MEASUREMENT_ID = "G-9T64PY883H"
-      const GA_API_SECRET = process.env.GA_API_SECRET
-
       const eventId = session.metadata?.event_id
       const paymentType = session.metadata?.type || "deposit"
-      const cid = session.metadata?.cid || "stripe-server"
       const stripeSessionId = session.id
+      const amount = session.amount_total || 0
 
       if (!eventId) {
         console.error("No event_id found in Stripe metadata")
         return res.json({ received: true })
       }
 
-      console.log(`Stripe ${paymentType} payment confirmed for event:`, eventId)
+      console.log(`💰 Payment received (${paymentType}) for event:`, eventId)
 
-      const { data: existingEvent } = await supabase
-        .from("events")
-        .select("stripe_session_id, balance_paid")
-        .eq("id", eventId)
+      // Prevent duplicate processing
+      const { data: existingPayment } = await supabase
+        .from("payments")
+        .select("stripe_session_id")
+        .eq("stripe_session_id", stripeSessionId)
         .single()
 
-      if (existingEvent?.stripe_session_id === stripeSessionId) {
+      if (existingPayment) {
         console.log("Webhook already processed for session", stripeSessionId)
         return res.json({ received: true })
       }
 
+      // ✅ SAVE PAYMENT (THIS WAS MISSING)
+      await supabase.from("payments").insert({
+        event_id: eventId,
+        amount: amount,
+        type: paymentType,
+        status: "completed",
+        stripe_session_id: stripeSessionId,
+      })
+
+      console.log("✅ Payment saved to database")
+
       if (paymentType === "deposit") {
-        const { error } = await supabase
+        await supabase
           .from("events")
           .update({
             deposit_paid: true,
@@ -72,35 +81,6 @@ router.post(
             stripe_session_id: stripeSessionId
           })
           .eq("id", eventId)
-
-        if (error) {
-          console.error("Supabase update error:", error)
-          return res.json({ received: true })
-        }
-
-        if (GA_API_SECRET) {
-          try {
-            await fetch(`https://www.google-analytics.com/mp/collect?measurement_id=${GA_MEASUREMENT_ID}&api_secret=${GA_API_SECRET}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                client_id: cid,
-                events: [
-                  {
-                    name: "begin_checkout",
-                    params: {
-                      transaction_id: stripeSessionId,
-                      value: session.amount_total ? session.amount_total / 100 : 0,
-                      currency: "USD"
-                    }
-                  }
-                ]
-              })
-            })
-          } catch (err) {
-            console.error("GA tracking failed (deposit)", err)
-          }
-        }
 
         const { data: eventData } = await supabase
           .from("events")
@@ -110,82 +90,47 @@ router.post(
 
         if (eventData) {
           try {
-            console.log("Sending booking confirmation email...")
             await sendBookingConfirmation(eventData)
-
-            console.log("Sending internal notification...")
             await sendInternalNotification(eventData)
-
-            console.log("Creating calendar event...")
             await createCalendarEvent(eventData)
-
-            console.log("All post-payment tasks completed")
+            console.log("✅ Deposit flow completed")
           } catch (err) {
-            console.error("Post-payment tasks failed", err)
+            console.error("Post-deposit tasks failed", err)
           }
         }
-
-        console.log("Deposit marked paid for event", eventId)
       }
 
       if (paymentType === "balance") {
-        const { error } = await supabase
+        await supabase
           .from("events")
           .update({
             balance_paid: true
           })
           .eq("id", eventId)
 
-        if (error) {
-          console.error("Balance payment update error:", error)
-          return res.json({ received: true })
-        }
-
-        if (GA_API_SECRET) {
-          try {
-            await fetch(`https://www.google-analytics.com/mp/collect?measurement_id=${GA_MEASUREMENT_ID}&api_secret=${GA_API_SECRET}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                client_id: cid,
-                events: [
-                  {
-                    name: "purchase",
-                    params: {
-                      transaction_id: stripeSessionId,
-                      value: session.amount_total ? session.amount_total / 100 : 0,
-                      currency: "USD"
-                    }
-                  }
-                ]
-              })
-            })
-          } catch (err) {
-            console.error("GA tracking failed (purchase)", err)
-          }
-        }
-
-        console.log("Balance marked paid for event", eventId)
-
-        const { data: eventDataBalance } = await supabase
+        const { data: eventData } = await supabase
           .from("events")
           .select("*")
           .eq("id", eventId)
           .single()
 
-        if (eventDataBalance) {
+        if (eventData) {
           try {
-            console.log("Sending final payment confirmation email...")
-            await sendBookingConfirmation(eventDataBalance)
-
-            console.log("Sending internal notification for balance payment...")
-            await sendInternalNotification(eventDataBalance)
-
-            console.log("Final payment notifications sent")
+            await sendBookingConfirmation(eventData)
+            await sendInternalNotification(eventData)
+            console.log("✅ Balance flow completed")
           } catch (err) {
-            console.error("Final payment tasks failed", err)
+            console.error("Post-balance tasks failed", err)
           }
         }
+      }
+
+      // 🚀 HANDLE UPGRADES
+      if (paymentType === "upgrade") {
+        console.log("🔥 Upgrade purchased for event:", eventId)
+
+        // OPTIONAL: you can extend this later to update event fields
+        // ex: add extra hours, premium bar, etc.
       }
     }
 
