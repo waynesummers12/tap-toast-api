@@ -75,4 +75,4 @@ router.post("/create-checkout-session", async (req, res) => {
 })
 
 module.exports = router
-export default router
+module.exports.default = router
