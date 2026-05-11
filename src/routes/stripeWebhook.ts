@@ -90,7 +90,8 @@ router.post(
             customer:customers (
               id,
               name,
-              email
+              email,
+              phone
             )
           `)
           .eq("id", eventId)
@@ -125,7 +126,8 @@ router.post(
             customer:customers (
               id,
               name,
-              email
+              email,
+              phone
             )
           `)
           .eq("id", eventId)
