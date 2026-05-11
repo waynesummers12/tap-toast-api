@@ -4,7 +4,9 @@ import { supabase } from "../lib/supabase"
 
 const router = express.Router()
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string)
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+  apiVersion: "2026-02-25.clover",
+})
 
 router.post("/create-checkout-session", async (req, res) => {
   try {
@@ -48,7 +50,7 @@ router.post("/create-checkout-session", async (req, res) => {
             product_data: {
               name: "Tap & Toast Event Deposit"
             },
-            unit_amount: event.deposit_amount * 100
+            unit_amount: Math.round((event.deposit_amount || 0) * 100)
           },
           quantity: 1
         }
@@ -72,4 +74,4 @@ router.post("/create-checkout-session", async (req, res) => {
   }
 })
 
-module.exports = router
+export default router
