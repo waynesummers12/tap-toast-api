@@ -69,7 +69,7 @@ router.post("/book-event", async (req: any, res: any) => {
           customer_id: customer.id,
 
           event_date,
-           start_time: start_time || "18:00",
+          start_time: start_time || "18:00",
           location,
           guest_count: guest_count || null,
           hours: Number(hours),
@@ -115,6 +115,7 @@ router.get("/events", async (req: any, res: any) => {
       .select(`
         id,
         event_date,
+        start_time,
         location,
         guest_count,
         hours,
