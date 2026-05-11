@@ -23,8 +23,9 @@ router.post(
     let event: Stripe.Event
 
     try {
+      const rawBody = req.body as Buffer
       event = stripe.webhooks.constructEvent(
-        req.body,
+        rawBody,
         sig,
         process.env.STRIPE_WEBHOOK_SECRET as string
       )
