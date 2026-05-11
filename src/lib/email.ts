@@ -2,6 +2,11 @@ import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
 
+const INTERNAL_EMAILS = [
+  "jen@coloradotapandtoast.com",
+  "waynesummers12@gmail.com"
+];
+
 // 1. Customer confirmation
 export async function sendCustomerConfirmationEmail({
   to,
@@ -53,7 +58,7 @@ export async function sendInternalNotificationEmail({
 }) {
   await resend.emails.send({
     from: "Tap & Toast Alerts <jen@coloradotapandtoast.com>",
-    to: ["jen@coloradotapandtoast.com", "waynesummers12@gmail.com"],
+    to: INTERNAL_EMAILS,
     subject: "🚨 New Booking Received",
     html: `
       <h2>New Booking 🚨</h2>
