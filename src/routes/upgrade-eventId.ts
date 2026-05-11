@@ -26,12 +26,16 @@ router.post("/upgrade", async (req, res) => {
 
     const { data: event, error } = await supabase
       .from("events")
-      .select("*")
+      .select("*, customers(email, name)")
       .eq("id", eventId)
       .single()
 
     if (error || !event) {
       return res.status(404).json({ error: "Event not found" })
+    }
+
+    if (!event.customers?.email) {
+      return res.status(400).json({ error: "Customer email not found for event" })
     }
 
     // Define upgrade pricing
@@ -55,10 +59,20 @@ router.post("/upgrade", async (req, res) => {
         return res.status(400).json({ error: "Invalid upgrade type" })
     }
 
+    const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000"
+
+    const successUrl = baseUrl.startsWith("http")
+      ? `${baseUrl}/success?upgrade=true`
+      : `http://${baseUrl}/success?upgrade=true`
+
+    const cancelUrl = baseUrl.startsWith("http")
+      ? `${baseUrl}/dashboard`
+      : `http://${baseUrl}/dashboard`
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
-      customer_email: event.customer_email,
+      customer_email: event.customers?.email,
 
       metadata: {
         event_id: event.id,
@@ -79,8 +93,8 @@ router.post("/upgrade", async (req, res) => {
         },
       ],
 
-      success_url: `${process.env.FRONTEND_URL}/success?upgrade=true`,
-      cancel_url: `${process.env.FRONTEND_URL}/dashboard`,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
     })
 
     return res.json({ url: session.url })
