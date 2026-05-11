@@ -17,6 +17,11 @@ if (process.env.ENABLE_REMINDERS !== "false") {
 const app = express()
 
 app.use(cors())
+
+// 🚨 Stripe webhook MUST use raw body BEFORE JSON parsing
+app.use("/api/webhook", express.raw({ type: "application/json" }))
+
+// Normal JSON parsing for all other routes
 app.use(express.json())
 
 const PORT = Number(process.env.PORT) || 8000
