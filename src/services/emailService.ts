@@ -1,17 +1,17 @@
 import { Resend } from "resend"
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+const resend = new Resend(process.env.RESEND_API_KEY as string)
 
 export async function sendBookingConfirmation(event: any) {
   try {
     await resend.emails.send({
-      from: "Tap & Toast <bookings@coloradotapntoast.com>",
-      to: event.email,
+      from: "Tap & Toast <bookings@coloradotapandtoast.com>",
+      to: event.customer_email || event.email,
       subject: "🎉 Your Tap & Toast Event is Confirmed",
       html: `
         <h2>Your Tap & Toast Event is Reserved!</h2>
 
-        <p>Hi ${event.name},</p>
+        <p>Hi ${event.customer_name || event.name},</p>
 
         <p>Your deposit has been received and your event is officially booked.</p>
 
@@ -34,5 +34,27 @@ export async function sendBookingConfirmation(event: any) {
     console.log("Confirmation email sent")
   } catch (error) {
     console.error("Email error:", error)
+  }
+}
+
+export async function sendInternalNotification(event: any) {
+  try {
+    await resend.emails.send({
+      from: "Tap & Toast Alerts <alerts@coloradotapandtoast.com>",
+      to: ["jen@coloradotapandtoast.com", "waynesummers@microsoft.com"],
+      subject: `🚨 New Booking - ${event.event_date}`,
+      html: `
+        <h2>New Booking 🚨</h2>
+        <p><strong>Name:</strong> ${event.customer_name || event.name}</p>
+        <p><strong>Email:</strong> ${event.customer_email || event.email}</p>
+        <p><strong>Event Date:</strong> ${event.event_date}</p>
+        <p><strong>Event Type:</strong> ${event.event_type || "N/A"}</p>
+        <p><strong>Location:</strong> ${event.location || "N/A"}</p>
+      `,
+    })
+
+    console.log("Internal notification email sent")
+  } catch (error) {
+    console.error("Internal email error:", error)
   }
 }

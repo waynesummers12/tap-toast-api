@@ -9,7 +9,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string)
 router.post("/create-checkout-session", async (req, res) => {
   try {
 
-    const { event_id } = req.body
+    const { event_id, landing_page } = req.body
 
     const { data: event, error } = await supabase
       .from("events")
@@ -25,10 +25,15 @@ router.post("/create-checkout-session", async (req, res) => {
       mode: "payment",
       payment_method_types: ["card"],
 
-      customer_email: "jen@coloradotapandtoast.com",
+      customer_email: event.customer_email,
 
       metadata: {
-        event_id: event.id
+        event_id: event.id,
+        customer_name: event.customer_name,
+        customer_email: event.customer_email,
+        event_date: event.event_date,
+        event_type: event.event_type,
+        landing_page: landing_page || "unknown"
       },
 
       line_items: [

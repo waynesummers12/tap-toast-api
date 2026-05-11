@@ -1,7 +1,7 @@
 import express from "express"
 import Stripe from "stripe"
 import { createClient } from "@supabase/supabase-js"
-import { sendBookingConfirmation } from "../services/emailService"
+import { sendBookingConfirmation, sendInternalNotification } from "../services/emailService"
 import { createCalendarEvent } from "../services/calendarService"
 
 const router = express.Router()
@@ -111,6 +111,7 @@ router.post(
         if (eventData) {
           try {
             await sendBookingConfirmation(eventData)
+            await sendInternalNotification(eventData)
             await createCalendarEvent(eventData)
           } catch (err) {
             console.error("Post-payment tasks failed", err)
