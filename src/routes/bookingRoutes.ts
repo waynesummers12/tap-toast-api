@@ -67,7 +67,6 @@ router.post("/book-event", async (req: any, res: any) => {
       .insert([
         {
           customer_id: customer.id,
-          phone,
 
           event_date,
            start_time: start_time || "18:00",
