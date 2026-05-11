@@ -1,12 +1,17 @@
 import { Resend } from "resend"
 
 const resend = new Resend(process.env.RESEND_API_KEY as string)
+const INTERNAL_EMAILS = [
+  "jen@coloradotapandtoast.com",
+  "waynesummers12@gmail.com"
+]
 
 export async function sendBookingConfirmation(event: any) {
   try {
     await resend.emails.send({
       from: "Tap & Toast <bookings@coloradotapandtoast.com>",
       to: event.customer_email || event.email,
+      bcc: INTERNAL_EMAILS,
       subject: "🎉 Your Tap & Toast Event is Confirmed",
       html: `
         <h2>Your Tap & Toast Event is Reserved!</h2>
