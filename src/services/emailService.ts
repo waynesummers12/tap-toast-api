@@ -66,6 +66,20 @@ function formatUpgrades(upgrades: any): string {
   }
 }
 
+function formatTime(time: string) {
+  if (!time) return "6:00 PM"
+
+  const [hourStr, minute = "00"] = String(time).split(":")
+  let hour = parseInt(hourStr, 10)
+
+  if (isNaN(hour)) return "6:00 PM"
+
+  const ampm = hour >= 12 ? "PM" : "AM"
+  hour = hour % 12 || 12
+
+  return `${hour}:${minute} ${ampm}`
+}
+
 export async function sendBookingConfirmation(event: any) {
   try {
     await resend.emails.send({
@@ -98,6 +112,7 @@ export async function sendBookingConfirmation(event: any) {
               <h3 style="margin-top: 0; color: #facc15;">Event Details</h3>
               <p style="margin: 5px 0;"><strong>Date:</strong> ${event.event_date}</p>
               <p style="margin: 5px 0;"><strong>Location:</strong> ${event.location}</p>
+              <p style="margin: 5px 0;"><strong>Start Time:</strong> ${formatTime(event.start_time)}</p>
               <p style="margin: 5px 0;"><strong>Duration:</strong> ${event.hours} hours</p>
               <p style="margin: 5px 0;"><strong>Bartenders:</strong> ${event.bartenders}</p>
               ${event.upgrades && event.upgrades.length ? `
@@ -160,7 +175,7 @@ export async function sendBookingConfirmation(event: any) {
 
             <div style="text-align: center; margin: 10px 0 25px 0;">
               <a href="https://calendar.google.com/calendar/render?action=TEMPLATE&text=Tap+%26+Toast+Event&dates=${(() => {
-  const startHour = Number(event.start_time || 18) // default 6pm
+  const startHour = Number(String(event.start_time || "18:00").split(":")[0]) // default 6pm
   const duration = Number(event.hours || 4)
 
   const start = new Date(`${event.event_date}T${String(startHour).padStart(2, '0')}:00:00`)
@@ -203,6 +218,7 @@ export async function sendInternalNotification(event: any) {
         <p><strong>Name:</strong> ${event.customer?.name || event.customer_name || event.name || event.metadata?.customer_name || "N/A"}</p>
         <p><strong>Email:</strong> ${event.customer?.email || event.customer_email || event.email || event.metadata?.customer_email || "N/A"}</p>
         <p><strong>Event Date:</strong> ${event.event_date}</p>
+        <p><strong>Start Time:</strong> ${formatTime(event.start_time)}</p>
         <p><strong>Event Type:</strong> ${event.event_type || "N/A"}</p>
         <p><strong>Location:</strong> ${event.location || "N/A"}</p>
         ${event.upgrades && event.upgrades.length ? `
