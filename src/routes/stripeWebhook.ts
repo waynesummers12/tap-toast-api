@@ -85,7 +85,14 @@ router.post(
 
         const { data: eventData } = await supabase
           .from("events")
-          .select("*")
+          .select(`
+            *,
+            customer:customers (
+              id,
+              name,
+              email
+            )
+          `)
           .eq("id", eventId)
           .single()
 
@@ -113,7 +120,14 @@ router.post(
 
         const { data: eventData } = await supabase
           .from("events")
-          .select("*")
+          .select(`
+            *,
+            customer:customers (
+              id,
+              name,
+              email
+            )
+          `)
           .eq("id", eventId)
           .single()
 
