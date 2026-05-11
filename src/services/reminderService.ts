@@ -76,20 +76,60 @@ export const runPaymentReminders = async () => {
         cancel_url: "http://localhost:3000/dashboard",
       })
 
+      const formattedDate = new Date(event.event_date).toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+
       const html = `
-        <h2>Your Tap & Toast event is coming up!</h2>
-        <p>Hi ${customer.name || "there"},</p>
-        <p>Your event on <strong>${new Date(event.event_date).toDateString()}</strong> is coming up soon.</p>
-        <p>Your remaining balance is:</p>
-        <h3>$${balance}</h3>
-        <p>Please complete payment here:</p>
-        <p><a href="${session.url}">Pay Remaining Balance</a></p>
-        <p>Cheers,<br/>Tap & Toast Mobile Bar</p>
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;">
+          <h2 style="color:#000;">Your Tap & Toast Event Is Coming Up 🍸</h2>
+
+          <p>Hi ${customer.name || "there"},</p>
+
+          <p>
+            Just a quick reminder that your event is scheduled for:
+          </p>
+
+          <p style="font-size: 18px; font-weight: bold;">
+            ${formattedDate}
+          </p>
+
+          <p>
+            To keep everything on track, your remaining balance is due soon:
+          </p>
+
+          <p style="font-size: 22px; font-weight: bold; color:#000;">
+            $${balance}
+          </p>
+
+          <p>
+            You can complete your payment securely below:
+          </p>
+
+          <p>
+            <a href="${session.url}" 
+               style="display:inline-block;padding:12px 20px;background:#000;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">
+              Pay Remaining Balance
+            </a>
+          </p>
+
+          <p style="margin-top:20px;">
+            If you have any last-minute updates or requests (extra hours, specialty drinks, additional bartender), just reply to this email — we’ve got you covered.
+          </p>
+
+          <p>
+            Looking forward to making your event amazing,<br/>
+            <strong>Tap & Toast Mobile Bar</strong>
+          </p>
+        </div>
       `
 
       await sendEmail({
         to: customer.email,
-        subject: "Tap & Toast Event Balance Due",
+        subject: `Your Event Is Coming Up — Final Balance Due (${formattedDate})`,
         html,
       })
 

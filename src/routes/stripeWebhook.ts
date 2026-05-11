@@ -110,9 +110,16 @@ router.post(
 
         if (eventData) {
           try {
+            console.log("Sending booking confirmation email...")
             await sendBookingConfirmation(eventData)
+
+            console.log("Sending internal notification...")
             await sendInternalNotification(eventData)
+
+            console.log("Creating calendar event...")
             await createCalendarEvent(eventData)
+
+            console.log("All post-payment tasks completed")
           } catch (err) {
             console.error("Post-payment tasks failed", err)
           }
@@ -159,6 +166,26 @@ router.post(
         }
 
         console.log("Balance marked paid for event", eventId)
+
+        const { data: eventDataBalance } = await supabase
+          .from("events")
+          .select("*")
+          .eq("id", eventId)
+          .single()
+
+        if (eventDataBalance) {
+          try {
+            console.log("Sending final payment confirmation email...")
+            await sendBookingConfirmation(eventDataBalance)
+
+            console.log("Sending internal notification for balance payment...")
+            await sendInternalNotification(eventDataBalance)
+
+            console.log("Final payment notifications sent")
+          } catch (err) {
+            console.error("Final payment tasks failed", err)
+          }
+        }
       }
     }
 
