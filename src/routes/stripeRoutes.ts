@@ -27,13 +27,13 @@ router.post("/create-checkout-session", async (req, res) => {
       mode: "payment",
       payment_method_types: ["card"],
 
-      customer_email: event.customer_email,
+      customer_email: undefined,
 
       metadata: {
         event_id: event.id,
         name: event.name || event.customer_name || "",
         email: event.email || event.customer_email || "",
-        phone: event.phone || "",
+        phone: "",
         event_date: event.event_date || "",
         event_type: event.event_type || "",
         guests: String(event.guests || ""),
