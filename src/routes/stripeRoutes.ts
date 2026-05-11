@@ -15,7 +15,15 @@ router.post("/create-checkout-session", async (req, res) => {
 
     const { data: event, error } = await supabase
       .from("events")
-      .select("*")
+      .select(`
+        *,
+        customer:customers (
+          id,
+          name,
+          email,
+          phone
+        )
+      `)
       .eq("id", event_id)
       .single()
 
@@ -27,13 +35,13 @@ router.post("/create-checkout-session", async (req, res) => {
       mode: "payment",
       payment_method_types: ["card"],
 
-      customer_email: undefined,
+      customer_email: event.customer?.email || undefined,
 
       metadata: {
         event_id: event.id,
-        name: event.name || event.customer_name || "",
-        email: event.email || event.customer_email || "",
-        phone: "",
+        name: event.customer?.name || event.name || "",
+        email: event.customer?.email || event.email || "",
+        phone: event.customer?.phone || "",
         event_date: event.event_date || "",
         event_type: event.event_type || "",
         guests: String(event.guests || ""),
