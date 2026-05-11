@@ -1,5 +1,3 @@
-
-
 import express from "express"
 import Stripe from "stripe"
 import { createClient } from "@supabase/supabase-js"
@@ -62,8 +60,8 @@ router.post("/upgrade", async (req, res) => {
     const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000"
 
     const successUrl = baseUrl.startsWith("http")
-      ? `${baseUrl}/success?upgrade=true`
-      : `http://${baseUrl}/success?upgrade=true`
+      ? `${baseUrl}/success?upgrade=true&event_id=${event.id}`
+      : `http://${baseUrl}/success?upgrade=true&event_id=${event.id}`
 
     const cancelUrl = baseUrl.startsWith("http")
       ? `${baseUrl}/dashboard`
