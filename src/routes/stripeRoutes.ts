@@ -29,11 +29,16 @@ router.post("/create-checkout-session", async (req, res) => {
 
       metadata: {
         event_id: event.id,
-        customer_name: event.customer_name,
-        customer_email: event.customer_email,
-        event_date: event.event_date,
-        event_type: event.event_type,
-        landing_page: landing_page || "unknown"
+        name: event.name || event.customer_name || "",
+        email: event.email || event.customer_email || "",
+        phone: event.phone || "",
+        event_date: event.event_date || "",
+        event_type: event.event_type || "",
+        guests: String(event.guests || ""),
+        bartenders: String(event.bartenders || ""),
+        hours: String(event.hours || ""),
+        landing_page: landing_page || "unknown",
+        type: "deposit"
       },
 
       line_items: [
