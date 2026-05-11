@@ -55,6 +55,15 @@ app.use((err: any, req: any, res: any, next: any) => {
 })
 
 // Start server (IMPORTANT: bind to 0.0.0.0)
+app.use("/api/availability", require("./routes/availableRoutes"))
+
+// Global error handler (helps debugging on Render)
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error("🔥 Server Error:", err)
+  res.status(500).json({ error: "Internal Server Error" })
+})
+
+// Start server (IMPORTANT: bind to 0.0.0.0)
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT}`)
 })

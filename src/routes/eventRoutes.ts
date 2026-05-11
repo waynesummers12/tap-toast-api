@@ -50,6 +50,27 @@ router.get("/", async (req, res) => {
   }
 })
 
+// GET booked dates (for calendar availability)
+router.get("/booked-dates", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("events")
+      .select("event_date")
+      .not("event_date", "is", null)
+
+    if (error) throw error
+
+    const bookedDates = (data || []).map((e: { event_date: string }) =>
+      e.event_date.split("T")[0] // normalize to YYYY-MM-DD
+    )
+
+    res.json({ bookedDates })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: "Failed to fetch booked dates" })
+  }
+})
+
 // MARK EVENT FULLY PAID
 router.post("/mark-paid", async (req, res) => {
   try {
