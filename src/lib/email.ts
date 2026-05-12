@@ -70,3 +70,21 @@ export async function sendInternalNotificationEmail({
     `,
   });
 }
+
+// 3. Generic email sender (used by reminder system)
+export async function sendEmail({
+  to,
+  subject,
+  html,
+}: {
+  to: string;
+  subject: string;
+  html: string;
+}) {
+  await resend.emails.send({
+    from: "Colorado Tap & Toast <jen@coloradotapandtoast.com>",
+    to,
+    subject,
+    html,
+  });
+}
