@@ -33,7 +33,7 @@ app.get("/", (req: any, res: any) => {
 
 // Routes
 import bookingRoutes from "./routes/bookingRoutes"
-const stripeRoutes = require("./routes/stripeRoutes")
+const stripeRoutes = require("./routes/stripeRoutes").default
 import stripeWebhook from "./routes/stripeWebhook"
 import eventRoutes from "./routes/eventRoutes"
 import bartenderRoutes from "./routes/bartenderRoutes"
