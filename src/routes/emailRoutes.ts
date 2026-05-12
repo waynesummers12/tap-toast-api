@@ -8,6 +8,8 @@ router.post("/reminder", async (req, res) => {
   try {
     const { eventId, type } = req.body
 
+    console.log("📩 REMINDER REQUEST:", { eventId, type })
+
     if (!eventId || !type) {
       return res.status(400).json({ error: "Missing eventId or type" })
     }
@@ -16,7 +18,10 @@ router.post("/reminder", async (req, res) => {
     const { data: event, error } = await supabase
       .from("events")
       .select(`
-        *,
+        id,
+        event_date,
+        deposit_amount,
+        balance_due,
         customers (
           name,
           email
@@ -25,11 +30,20 @@ router.post("/reminder", async (req, res) => {
       .eq("id", eventId)
       .single()
 
+    console.log("📦 EVENT FETCH RESULT:", event, error)
+
     if (error || !event) {
       return res.status(404).json({ error: "Event not found" })
     }
 
-    const customer = event.customers
+    const customer = Array.isArray(event.customers)
+      ? event.customers[0]
+      : event.customers
+
+    if (!customer?.email) {
+      return res.status(400).json({ error: "Customer email missing" })
+    }
+
     const eventDate = new Date(event.event_date).toLocaleDateString()
 
     let subject = ""
@@ -50,9 +64,7 @@ router.post("/reminder", async (req, res) => {
 
         <p>— Colorado Tap & Toast</p>
       `
-    }
-
-    if (type === "balance_reminder") {
+    } else if (type === "balance_reminder") {
       subject = "Reminder: Final Payment Due"
 
       html = `
@@ -67,7 +79,11 @@ router.post("/reminder", async (req, res) => {
 
         <p>— Colorado Tap & Toast</p>
       `
+    } else {
+      return res.status(400).json({ error: "Invalid reminder type" })
     }
+
+    console.log("📨 SENDING EMAIL TO:", customer.email)
 
     await sendEmail({
       to: customer.email,
@@ -75,10 +91,12 @@ router.post("/reminder", async (req, res) => {
       html,
     })
 
+    console.log("✅ EMAIL SENT SUCCESSFULLY")
+
     return res.json({ success: true })
 
   } catch (err) {
-    console.error(err)
+    console.error("🔥 REMINDER ERROR:", err)
     return res.status(500).json({ error: "Failed to send reminder" })
   }
 })
