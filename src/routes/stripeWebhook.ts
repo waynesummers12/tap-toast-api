@@ -16,8 +16,13 @@ const supabase = createClient(
 )
 
 router.post(
-  "/api/webhook",
+  "/webhook",
   async (req, res) => {
+    // Ensure raw body is a Buffer (Render/Express compatibility)
+    if (!(req.body instanceof Buffer)) {
+      req.body = Buffer.from(req.body)
+    }
+
     const sig = req.headers["stripe-signature"] as string
 
     let event: Stripe.Event

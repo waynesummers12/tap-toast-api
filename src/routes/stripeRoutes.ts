@@ -2,6 +2,7 @@ import express from "express"
 import Stripe from "stripe"
 import { supabase } from "../lib/supabase"
 import { sendEmail } from "../lib/email"
+import { sendBalancePaymentEmail } from "../services/emailService"
 
 const router = express.Router()
 
@@ -77,7 +78,7 @@ router.post("/send-deposit", async (req, res) => {
         <p>Please secure your event date by completing your deposit below:</p>
 
         <p>
-          <a href="${session.url}" target="_blank">
+          <a href="${session.url as string}" target="_blank">
             Pay Deposit
           </a>
         </p>
@@ -87,7 +88,7 @@ router.post("/send-deposit", async (req, res) => {
       `,
     })
 
-    res.json({ success: true, url: session.url })
+    res.json({ success: true, url: session.url as string })
   } catch (err) {
     console.error("Deposit link error:", err)
     res.status(500).json({ error: "Failed to send deposit link" })
@@ -129,30 +130,61 @@ router.post("/send-balance", async (req, res) => {
       cancel_url: "https://www.coloradotapandtoast.com/book",
     })
 
-    // Send email with payment link
-    await sendEmail({
-      to: event.customer?.email,
-      subject: "Final Payment Due – Colorado Tap & Toast",
-      html: `
-        <p>Hi ${event.customer?.name || "there"},</p>
+    // Send styled balance email
+    await sendBalancePaymentEmail(event, session.url as string)
 
-        <p>Your event is coming up soon. Please complete your final payment below:</p>
-
-        <p>
-          <a href="${session.url}" target="_blank">
-            Pay Remaining Balance
-          </a>
-        </p>
-
-        <p>Thank you!</p>
-        <p>— Colorado Tap & Toast</p>
-      `,
-    })
-
-    res.json({ success: true, url: session.url })
+    res.json({ success: true, url: session.url as string })
   } catch (err) {
     console.error("Balance link error:", err)
     res.status(500).json({ error: "Failed to send balance link" })
+  }
+})
+
+// STRIPE WEBHOOK - MARK EVENT PAID
+router.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  try {
+    const sig = req.headers["stripe-signature"] as string
+
+    const event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET as string
+    )
+
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object as Stripe.Checkout.Session
+
+      const eventId = session.metadata?.event_id
+      const type = session.metadata?.type
+
+      if (!eventId) {
+        console.error("No event_id in metadata")
+        return res.status(400).send("Missing event_id")
+      }
+
+      if (type === "deposit") {
+        await supabase
+          .from("events")
+          .update({ deposit_paid: true })
+          .eq("id", eventId)
+
+        console.log("Deposit marked paid for event:", eventId)
+      }
+
+      if (type === "balance") {
+        await supabase
+          .from("events")
+          .update({ balance_due: 0, deposit_paid: true })
+          .eq("id", eventId)
+
+        console.log("Balance marked paid for event:", eventId)
+      }
+    }
+
+    res.json({ received: true })
+  } catch (err) {
+    console.error("Webhook error:", err)
+    res.status(400).send(`Webhook Error: ${err}`)
   }
 })
 
