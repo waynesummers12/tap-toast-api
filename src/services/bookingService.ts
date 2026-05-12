@@ -1,5 +1,3 @@
-
-
 import { createClient } from "@supabase/supabase-js"
 
 const supabase = createClient(
@@ -46,7 +44,7 @@ export const createBooking = async (input: BookingInput) => {
     // Create or fetch customer
     let { data: customer } = await supabase
       .from("customers")
-      .select("*")
+      .select("id, name, email, phone")
       .eq("email", input.email)
       .single()
 
@@ -58,7 +56,7 @@ export const createBooking = async (input: BookingInput) => {
           email: input.email,
           phone: input.phone
         })
-        .select()
+        .select("id, name, email, phone")
         .single()
 
       if (error) throw error
@@ -80,7 +78,24 @@ export const createBooking = async (input: BookingInput) => {
         balance_due: pricing.balanceDue,
         deposit_paid: false
       })
-      .select()
+      .select(`
+  id,
+  event_date,
+  location,
+  guest_count,
+  hours,
+  bartenders,
+  total_price,
+  deposit_amount,
+  balance_due,
+  deposit_paid,
+  customer_id,
+  customers (
+    name,
+    email,
+    phone
+  )
+`)
       .single()
 
     if (error) throw error

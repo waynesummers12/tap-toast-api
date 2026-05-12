@@ -9,7 +9,7 @@ const supabase = createClient(
 )
 
 type BartenderInput = {
-  name: string
+  id: string
   hours?: number
   pay?: number
 }
@@ -26,7 +26,7 @@ router.get("/bartenders", async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("bartenders")
-      .select("*")
+      .select("id, name, phone, pay_rate")
       .order("name", { ascending: true })
 
     if (error) {
@@ -92,11 +92,11 @@ router.post("/events/assign-bartenders", async (req, res) => {
 
     // Create rows for new assignments
     const rows = bartenders.map((b) => ({
-      event_id,
-      bartender_name: b.name,
-      hours: b.hours ?? null,
-      pay: b.pay ?? null
-    }))
+  event_id,
+  bartender_id: b.id,
+  hours: b.hours ?? null,
+  pay: b.pay ?? null
+}))
 
     const { error: insertError } = await supabase
       .from("event_bartenders")
