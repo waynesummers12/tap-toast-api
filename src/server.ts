@@ -49,6 +49,7 @@ app.use("/api/bartenders", bartenderRoutes)
 app.use("/api", assignBartendersRoutes)
 app.use("/api", upgradeRoutes)
 app.use("/api/availability", availableRoutes)
+app.use("/api/email", emailRoutes)
 app.use(stripeWebhook)
 
 // Global error handler (helps debugging on Render)
