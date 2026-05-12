@@ -1,6 +1,7 @@
 import express from "express"
 import Stripe from "stripe"
 import { supabase } from "../lib/supabase"
+import { sendEmail } from "../lib/email"
 
 const router = express.Router()
 
@@ -66,6 +67,26 @@ router.post("/send-deposit", async (req, res) => {
       cancel_url: "https://www.coloradotapandtoast.com/book",
     })
 
+    // Send email with payment link
+    await sendEmail({
+      to: event.customer?.email,
+      subject: "Complete Your Deposit – Colorado Tap & Toast",
+      html: `
+        <p>Hi ${event.customer?.name || "there"},</p>
+
+        <p>Please secure your event date by completing your deposit below:</p>
+
+        <p>
+          <a href="${session.url}" target="_blank">
+            Pay Deposit
+          </a>
+        </p>
+
+        <p>We look forward to serving you!</p>
+        <p>— Colorado Tap & Toast</p>
+      `,
+    })
+
     res.json({ success: true, url: session.url })
   } catch (err) {
     console.error("Deposit link error:", err)
@@ -106,6 +127,26 @@ router.post("/send-balance", async (req, res) => {
 
       success_url: `https://www.coloradotapandtoast.com/success?event_id=${event.id}`,
       cancel_url: "https://www.coloradotapandtoast.com/book",
+    })
+
+    // Send email with payment link
+    await sendEmail({
+      to: event.customer?.email,
+      subject: "Final Payment Due – Colorado Tap & Toast",
+      html: `
+        <p>Hi ${event.customer?.name || "there"},</p>
+
+        <p>Your event is coming up soon. Please complete your final payment below:</p>
+
+        <p>
+          <a href="${session.url}" target="_blank">
+            Pay Remaining Balance
+          </a>
+        </p>
+
+        <p>Thank you!</p>
+        <p>— Colorado Tap & Toast</p>
+      `,
     })
 
     res.json({ success: true, url: session.url })
