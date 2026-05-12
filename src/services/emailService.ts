@@ -367,3 +367,86 @@ export async function sendPaymentReceivedEmail(event: any, type: "deposit" | "ba
     console.error("Payment confirmation email error:", error)
   }
 }
+export async function send15DayReminderEmail(event: any, paymentUrl?: string) {
+  try {
+    await resend.emails.send({
+      from: "Tap & Toast <jen@coloradotapandtoast.com>",
+      to: event.customer?.email || event.customer_email || event.email,
+      bcc: INTERNAL_EMAILS,
+      subject: "🍸 Your Event is Coming Up – 15 Day Reminder",
+      html: `
+      <div style="font-family: Arial, sans-serif; background-color: #000000; padding: 30px; color: #ffffff;">
+
+        <div style="max-width: 600px; margin: 0 auto; background: #111111; border-radius: 10px; overflow: hidden; border: 1px solid #222;">
+
+          <div style="background: linear-gradient(to right, #facc15, #eab308); padding: 20px; text-align: center;">
+            <h1 style="margin: 0; font-size: 24px; color: #000;">Tap & Toast</h1>
+            <p style="margin: 0; font-size: 14px; color: #000;">Mobile Bar Experience</p>
+          </div>
+
+          <div style="padding: 25px;">
+
+            <h2 style="margin-top: 0;">⏳ 15-Day Reminder</h2>
+
+            <p>Hi <strong>${event.customer?.name || "there"}</strong>,</p>
+
+            <p>
+              Your event is coming up soon! We’re getting everything ready to make it amazing.
+            </p>
+
+            <div style="margin: 20px 0; padding: 15px; background: #1a1a1a; border-radius: 8px;">
+              <h3 style="margin-top: 0; color: #facc15;">Event Details</h3>
+              <p style="margin: 5px 0;"><strong>Date:</strong> ${event.event_date}</p>
+              <p style="margin: 5px 0;"><strong>Location:</strong> ${event.location}</p>
+              <p style="margin: 5px 0;"><strong>Start Time:</strong> ${formatTime(event.start_time)}</p>
+              <p style="margin: 5px 0;"><strong>Duration:</strong> ${event.hours} hours</p>
+            </div>
+
+            ${event.balance_due && event.balance_due > 0 ? `
+            <div style="margin: 20px 0; padding: 15px; background: #1a1a1a; border-radius: 8px;">
+              <h3 style="margin-top: 0; color: #facc15;">Payment Reminder</h3>
+              <p style="margin: 5px 0;"><strong>Remaining Balance:</strong> $${event.balance_due}</p>
+              <p style="margin: 5px 0; font-size: 12px; color: #aaa;">
+                Final payment is due 10 days before your event
+              </p>
+            </div>
+
+            ${paymentUrl ? `
+            <div style="text-align: center; margin: 25px 0;">
+              <a href="${paymentUrl}" 
+                 style="display: inline-block; background: linear-gradient(to right, #facc15, #eab308); color: #000; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px;">
+                Pay Remaining Balance
+              </a>
+            </div>
+            ` : ""}
+            ` : ""}
+
+            <div style="margin: 25px 0; padding: 15px; background: #111; border: 1px solid #333; border-radius: 8px;">
+              <p style="margin: 0; font-size: 14px; color: #facc15;">
+                Want to elevate your experience?
+              </p>
+              <p style="margin: 5px 0 0 0; font-size: 13px;">
+                Add bartenders, extend hours, or upgrade your bar setup anytime.
+              </p>
+            </div>
+
+            <p style="margin-top: 25px;">
+              If you need to make any changes or have questions, just reply to this email.
+            </p>
+
+            <p style="margin-top: 30px;">Cheers,</p>
+            <p style="margin: 0;">Tap & Toast 🍸</p>
+
+          </div>
+
+        </div>
+
+      </div>
+      `
+    })
+
+    console.log("15-day reminder email sent")
+  } catch (error) {
+    console.error("15-day reminder email error:", error)
+  }
+}

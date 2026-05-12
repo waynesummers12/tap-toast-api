@@ -6,6 +6,8 @@ const sendEmail =
   (emailService as any).sendEmail ??
   (emailService as any).default
 
+const send15DayReminderEmail = (emailService as any).send15DayReminderEmail
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: "2026-02-25.clover",
 })
@@ -15,7 +17,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY as string
 )
 
-const REMINDER_WINDOWS = [10, 3]
+const REMINDER_WINDOWS = [15, 10, 3]
 
 export const runPaymentReminders = async () => {
   try {
@@ -146,14 +148,18 @@ export const runPaymentReminders = async () => {
           </div>
         `
 
-        await sendEmail({
-          to: customer.email,
-          subject:
-            daysBefore === 3
-              ? `Final Reminder — Your Event Is Almost Here (${formattedDate})`
-              : `Your Event Is Coming Up — Balance Due (${formattedDate})`,
-          html,
-        })
+        if (daysBefore === 15 && send15DayReminderEmail) {
+          await send15DayReminderEmail(event, session.url as string)
+        } else {
+          await sendEmail({
+            to: customer.email,
+            subject:
+              daysBefore === 3
+                ? `Final Reminder — Your Event Is Almost Here (${formattedDate})`
+                : `Your Event Is Coming Up — Balance Due (${formattedDate})`,
+            html,
+          })
+        }
 
         console.log(`Reminder sent (${daysBefore} days) to ${customer.email}`)
 
