@@ -14,9 +14,23 @@ router.get("/", async (req, res) => {
     const { data, error } = await supabase
       .from("events")
       .select(`
-        *,
-        customers(name,email),
-        event_bartenders(id)
+        id,
+        event_date,
+        location,
+        hours,
+        bartenders_needed,
+        total_price,
+        deposit_amount,
+        balance_due,
+        deposit_paid,
+        bartenders,
+        customers (
+          name,
+          email
+        ),
+        event_bartenders (
+          id
+        )
       `)
       .order("event_date", { ascending: true })
 
