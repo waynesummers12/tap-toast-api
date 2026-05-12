@@ -297,3 +297,73 @@ export async function sendBalancePaymentEmail(event: any, paymentUrl: string) {
     console.error("Balance email error:", error)
   }
 }
+export async function sendPaymentReceivedEmail(event: any, type: "deposit" | "balance") {
+  try {
+    await resend.emails.send({
+      from: "Tap & Toast <jen@coloradotapandtoast.com>",
+      to: event.customer?.email || event.customer_email || event.email,
+      bcc: INTERNAL_EMAILS,
+      subject: type === "deposit"
+        ? "🎉 Deposit Received – You're Booked!"
+        : "✅ Payment Received – You're All Set!",
+      html: `
+      <div style="font-family: Arial, sans-serif; background-color: #000000; padding: 30px; color: #ffffff;">
+
+        <div style="max-width: 600px; margin: 0 auto; background: #111111; border-radius: 10px; overflow: hidden; border: 1px solid #222;">
+
+          <div style="background: linear-gradient(to right, #facc15, #eab308); padding: 20px; text-align: center;">
+            <h1 style="margin: 0; font-size: 24px; color: #000;">Tap & Toast</h1>
+            <p style="margin: 0; font-size: 14px; color: #000;">Mobile Bar Experience</p>
+          </div>
+
+          <div style="padding: 25px;">
+
+            <h2 style="margin-top: 0;">
+              ${type === "deposit" ? "🎉 Deposit Received" : "✅ Payment Complete"}
+            </h2>
+
+            <p>Hi <strong>${event.customer?.name || "there"}</strong>,</p>
+
+            <p>
+              ${type === "deposit"
+                ? "Your deposit has been received and your event is officially booked."
+                : "Your final payment has been received and your event is fully paid."}
+            </p>
+
+            <div style="margin: 20px 0; padding: 15px; background: #1a1a1a; border-radius: 8px;">
+              <h3 style="margin-top: 0; color: #facc15;">Event Details</h3>
+              <p style="margin: 5px 0;"><strong>Date:</strong> ${event.event_date}</p>
+              <p style="margin: 5px 0;"><strong>Location:</strong> ${event.location}</p>
+              <p style="margin: 5px 0;"><strong>Start Time:</strong> ${formatTime(event.start_time)}</p>
+              <p style="margin: 5px 0;"><strong>Duration:</strong> ${event.hours} hours</p>
+            </div>
+
+            ${type === "balance" ? `
+            <div style="margin: 20px 0; padding: 15px; background: #1a1a1a; border-radius: 8px;">
+              <h3 style="margin-top: 0; color: #22c55e;">Status</h3>
+              <p style="margin: 5px 0; font-weight: bold; color: #22c55e;">
+                Your event is fully paid and confirmed ✔
+              </p>
+            </div>
+            ` : ""}
+
+            <p style="margin-top: 25px;">
+              We’re excited to be part of your event. If you need anything or want to make changes, just reply to this email.
+            </p>
+
+            <p style="margin-top: 30px;">Cheers,</p>
+            <p style="margin: 0;">Tap & Toast 🍸</p>
+
+          </div>
+
+        </div>
+
+      </div>
+      `
+    })
+
+    console.log("Payment confirmation email sent")
+  } catch (error) {
+    console.error("Payment confirmation email error:", error)
+  }
+}

@@ -1,7 +1,7 @@
 import express from "express"
 import Stripe from "stripe"
 import { createClient } from "@supabase/supabase-js"
-import { sendBookingConfirmation, sendInternalNotification } from "../services/emailService"
+import { sendBookingConfirmation, sendInternalNotification, sendPaymentReceivedEmail } from "../services/emailService"
 import { createCalendarEvent } from "../services/calendarService"
 
 const router = express.Router()
@@ -108,6 +108,7 @@ router.post(
             await sendBookingConfirmation(eventData)
             await sendInternalNotification(eventData)
             await createCalendarEvent(eventData)
+            await sendPaymentReceivedEmail(eventData, "deposit")
             console.log("✅ Emails + calendar event sent")
             console.log("✅ Deposit flow completed")
           } catch (err) {
@@ -120,7 +121,9 @@ router.post(
         await supabase
           .from("events")
           .update({
-            balance_paid: true
+            balance_paid: true,
+
+balance_due: 0
           })
           .eq("id", eventId)
 
@@ -143,6 +146,7 @@ router.post(
             console.log("📧 Sending booking + internal emails (balance)...")
             await sendBookingConfirmation(eventData)
             await sendInternalNotification(eventData)
+            await sendPaymentReceivedEmail(eventData, "balance")
             console.log("✅ Emails sent (balance)")
             console.log("✅ Balance flow completed")
           } catch (err) {

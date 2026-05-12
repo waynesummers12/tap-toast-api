@@ -19,7 +19,7 @@ const app = express()
 app.use(cors())
 
 // 🚨 Stripe webhook MUST use raw body BEFORE JSON parsing
-app.use("/api/webhook", express.raw({ type: "application/json" }))
+app.use("/api/stripe/webhook", express.raw({ type: "application/json" }))
 
 // Normal JSON parsing for all other routes
 app.use(express.json())
@@ -50,7 +50,7 @@ app.use("/api", assignBartendersRoutes)
 app.use("/api", upgradeRoutes)
 app.use("/api/availability", availableRoutes)
 app.use("/api/email", emailRoutes)
-app.use(stripeWebhook)
+app.use("/api/stripe", stripeWebhook)
 
 // Global error handler (helps debugging on Render)
 app.use((err: any, req: any, res: any, next: any) => {
