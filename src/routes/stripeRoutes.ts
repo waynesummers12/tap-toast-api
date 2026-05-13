@@ -33,6 +33,60 @@ const getEvent = async (eventId: string) => {
   return event
 }
 
+// CREATE CHECKOUT SESSION (used by dashboard)
+router.post("/create-checkout-session", async (req, res) => {
+  try {
+    const { event_id, type } = req.body
+
+    const event = await getEvent(event_id)
+
+    const isDeposit = type === "deposit"
+
+    const amount = isDeposit
+      ? event.deposit_amount
+      : event.balance_due
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "payment",
+
+      customer_email: event.customer?.email || event.email || undefined,
+
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: isDeposit
+                ? "Tap & Toast Event Deposit"
+                : "Tap & Toast Event Balance",
+            },
+            unit_amount: Math.round((amount || 0) * 100),
+          },
+          quantity: 1,
+        },
+      ],
+
+      success_url: `https://www.coloradotapandtoast.com/success?event_id=${event_id}`,
+      cancel_url: `https://www.coloradotapandtoast.com/book`,
+
+      metadata: {
+        event_id,
+        type,
+      },
+    })
+
+    res.json({
+      success: true, // 🔥 REQUIRED
+      url: session.url,
+    })
+
+  } catch (err) {
+    console.error("Stripe session error", err)
+    res.status(500).json({ error: "Failed to create session" })
+  }
+})
+
 // SEND DEPOSIT PAYMENT LINK
 router.post("/send-deposit", async (req, res) => {
   try {
@@ -165,7 +219,10 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
       if (type === "deposit") {
         await supabase
           .from("events")
-          .update({ deposit_paid: true })
+          .update({
+            deposit_paid: true,
+            event_status: "confirmed",
+          })
           .eq("id", eventId)
 
         console.log("Deposit marked paid for event:", eventId)
@@ -174,7 +231,12 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
       if (type === "balance") {
         await supabase
           .from("events")
-          .update({ balance_due: 0, deposit_paid: true })
+          .update({
+            balance_due: 0,
+            deposit_paid: true,
+            balance_paid: true,
+            event_status: "confirmed",
+          })
           .eq("id", eventId)
 
         console.log("Balance marked paid for event:", eventId)
