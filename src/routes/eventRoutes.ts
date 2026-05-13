@@ -95,13 +95,22 @@ router.post("/create", async (req, res) => {
       location: parsed.location,
       start_time: parsed.start_time,
       hours,
-      bartenders,
+
+      // 🔥 MATCH SCHEMA
+      bartenders_needed: bartenders,
+
+      base_price: 600,
+      bartender_rate: 25,
+
       custom_total_price: customTotal > 0 ? customTotal : null,
       total_price: safeTotal,
       deposit_amount: deposit,
       balance_due: balance,
+
       deposit_paid: false,
       balance_paid: false,
+
+      status: "pending",
       event_status: "pending"
     }
 
