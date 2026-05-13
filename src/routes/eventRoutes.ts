@@ -20,6 +20,7 @@ router.post("/create", async (req, res) => {
     delete eventData.email
     delete eventData.phone
     delete eventData.event_type
+    delete eventData.guests
 
     const { data: event, error } = await supabase
       .from("events")
