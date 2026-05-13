@@ -105,6 +105,8 @@ router.post(
         if (eventData) {
           try {
             console.log("📧 Sending booking + internal emails...")
+            console.log("📦 EVENT DATA:", JSON.stringify(eventData, null, 2))
+            console.log("📧 CUSTOMER EMAIL:", eventData?.customer?.email)
             await sendBookingConfirmation(eventData)
             await sendInternalNotification(eventData)
             await createCalendarEvent(eventData)
@@ -144,6 +146,8 @@ balance_due: 0
         if (eventData) {
           try {
             console.log("📧 Sending booking + internal emails (balance)...")
+            console.log("📦 EVENT DATA (BALANCE):", JSON.stringify(eventData, null, 2))
+            console.log("📧 CUSTOMER EMAIL (BALANCE):", eventData?.customer?.email)
             await sendBookingConfirmation(eventData)
             await sendInternalNotification(eventData)
             await sendPaymentReceivedEmail(eventData, "balance")
