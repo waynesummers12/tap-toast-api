@@ -28,15 +28,19 @@ router.post("/create", async (req, res) => {
 
     if (customerError) throw customerError
 
-    // 🔥 SAFE PRICING CALCULATION
+    // 🔥 SAFE PRICING CALCULATION (with custom override)
     const hours = Number(req.body.hours || 0)
     const bartenders = Number(req.body.bartenders || 0)
     const base = 600
     const staffing = bartenders * hours * 40
 
-    const safeTotal = Number(req.body.total_price) > 0
-      ? Number(req.body.total_price)
-      : base + staffing
+    const customTotal = Number(req.body.custom_total_price || 0)
+
+    const safeTotal = customTotal > 0
+      ? customTotal
+      : (Number(req.body.total_price) > 0
+          ? Number(req.body.total_price)
+          : base + staffing)
 
     const deposit = safeTotal * 0.5
     const balance = safeTotal - deposit
@@ -48,6 +52,7 @@ router.post("/create", async (req, res) => {
       start_time: req.body.start_time,
       hours,
       bartenders,
+      custom_total_price: customTotal > 0 ? customTotal : null,
       total_price: safeTotal,
       deposit_amount: deposit,
       balance_due: balance,
