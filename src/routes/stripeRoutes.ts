@@ -10,6 +10,11 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: "2026-02-25.clover",
 })
 
+const BASE_URL =
+  process.env.FRONTEND_URL && process.env.FRONTEND_URL.startsWith("http")
+    ? process.env.FRONTEND_URL
+    : "https://www.coloradotapandtoast.com"
+
 // Helper to fetch event
 const getEvent = async (eventId: string) => {
   const { data: event, error } = await supabase
@@ -37,6 +42,11 @@ const getEvent = async (eventId: string) => {
 router.post("/create-checkout-session", async (req, res) => {
   try {
     const eventId = req.body.eventId || req.body.event_id
+
+    if (!eventId) {
+      return res.status(400).json({ error: "Missing eventId" })
+    }
+
     const { type } = req.body
 
     const event = await getEvent(eventId)
@@ -74,8 +84,8 @@ router.post("/create-checkout-session", async (req, res) => {
         },
       ],
 
-      success_url: `https://www.coloradotapandtoast.com/success?event_id=${eventId}`,
-      cancel_url: `https://www.coloradotapandtoast.com/book`,
+      success_url: `${BASE_URL}/success?event_id=${encodeURIComponent(eventId)}`,
+      cancel_url: `${BASE_URL}/book`,
 
       metadata: {
         event_id: eventId,
@@ -125,8 +135,8 @@ router.post("/send-deposit", async (req, res) => {
         },
       ],
 
-      success_url: `https://www.coloradotapandtoast.com/success?event_id=${event.id}`,
-      cancel_url: "https://www.coloradotapandtoast.com/book",
+      success_url: `${BASE_URL}/success?event_id=${encodeURIComponent(event.id)}`,
+      cancel_url: `${BASE_URL}/book`,
     })
 
     // Send email with payment link
@@ -187,8 +197,8 @@ router.post("/send-balance", async (req, res) => {
         },
       ],
 
-      success_url: `https://www.coloradotapandtoast.com/success?event_id=${event.id}`,
-      cancel_url: "https://www.coloradotapandtoast.com/book",
+      success_url: `${BASE_URL}/success?event_id=${encodeURIComponent(event.id)}`,
+      cancel_url: `${BASE_URL}/book`,
     })
 
     // Send styled balance email
