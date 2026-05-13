@@ -124,8 +124,9 @@ router.post(
           .from("events")
           .update({
             balance_paid: true,
-
-balance_due: 0
+            deposit_paid: true,
+            balance_due: 0,
+            event_status: "confirmed"
           })
           .eq("id", eventId)
 
@@ -148,7 +149,6 @@ balance_due: 0
             console.log("📧 Sending booking + internal emails (balance)...")
             console.log("📦 EVENT DATA (BALANCE):", JSON.stringify(eventData, null, 2))
             console.log("📧 CUSTOMER EMAIL (BALANCE):", eventData?.customer?.email)
-            await sendBookingConfirmation(eventData)
             await sendInternalNotification(eventData)
             await sendPaymentReceivedEmail(eventData, "balance")
             console.log("✅ Emails sent (balance)")

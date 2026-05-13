@@ -15,3 +15,13 @@ cron.schedule("0 9 * * *", async () => {
     console.error("Reminder job failed:", err)
   }
 })
+// 🚀 Run once on startup (important for testing + reliability)
+;(async () => {
+  try {
+    console.log("Running reminder job on startup...")
+    await runPaymentReminders()
+    console.log("Startup reminder job completed")
+  } catch (err) {
+    console.error("Startup reminder job failed:", err)
+  }
+})()

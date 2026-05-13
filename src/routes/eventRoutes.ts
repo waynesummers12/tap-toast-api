@@ -19,7 +19,7 @@ router.post("/create", async (req, res) => {
       .insert([eventData])
       .select(`
         *,
-        customers (
+        customer:customers (
           name,
           email
         )
