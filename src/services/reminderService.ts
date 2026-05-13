@@ -32,7 +32,7 @@ export const runPaymentReminders = async () => {
 
       const { data: events, error } = await supabase
         .from("events")
-        .select("*, customers(name,email)")
+        .select("*, customer:customers(name,email)")
         .eq("event_status", "confirmed")
         .gte("event_date", start)
         .lte("event_date", end)
@@ -46,7 +46,7 @@ export const runPaymentReminders = async () => {
       }
 
       for (const event of events) {
-        const customer = event.customers
+        const customer = event.customer
         if (!customer?.email) continue
 
         const balance = event.balance_due
