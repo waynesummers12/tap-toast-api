@@ -36,9 +36,10 @@ const getEvent = async (eventId: string) => {
 // CREATE CHECKOUT SESSION (used by dashboard)
 router.post("/create-checkout-session", async (req, res) => {
   try {
-    const { event_id, type } = req.body
+    const eventId = req.body.eventId || req.body.event_id
+    const { type } = req.body
 
-    const event = await getEvent(event_id)
+    const event = await getEvent(eventId)
 
     const isDeposit = type === "deposit"
 
@@ -73,11 +74,11 @@ router.post("/create-checkout-session", async (req, res) => {
         },
       ],
 
-      success_url: `https://www.coloradotapandtoast.com/success?event_id=${event_id}`,
+      success_url: `https://www.coloradotapandtoast.com/success?event_id=${eventId}`,
       cancel_url: `https://www.coloradotapandtoast.com/book`,
 
       metadata: {
-        event_id,
+        event_id: eventId,
         type,
       },
     })
@@ -96,7 +97,7 @@ router.post("/create-checkout-session", async (req, res) => {
 // SEND DEPOSIT PAYMENT LINK
 router.post("/send-deposit", async (req, res) => {
   try {
-    const { eventId } = req.body
+    const eventId = req.body.eventId || req.body.event_id
 
     const event = await getEvent(eventId)
 
@@ -158,7 +159,7 @@ router.post("/send-deposit", async (req, res) => {
 // SEND BALANCE PAYMENT LINK
 router.post("/send-balance", async (req, res) => {
   try {
-    const { eventId } = req.body
+    const eventId = req.body.eventId || req.body.event_id
 
     const event = await getEvent(eventId)
 

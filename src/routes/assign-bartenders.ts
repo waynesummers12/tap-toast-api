@@ -71,7 +71,8 @@ router.post("/bartenders", async (req, res) => {
 // Assign bartenders to an event
 router.post("/events/assign-bartenders", async (req, res) => {
   try {
-    const { event_id, bartenders } = req.body as { event_id: string; bartenders: BartenderInput[] }
+    const event_id = req.body.eventId || req.body.event_id
+    const { bartenders } = req.body as { bartenders: BartenderInput[] }
 
     if (!event_id || !Array.isArray(bartenders) || bartenders.length === 0) {
       return res.status(400).json({

@@ -212,7 +212,7 @@ router.get("/booked-slots", async (req, res) => {
 // MARK EVENT FULLY PAID
 router.post("/mark-paid", async (req, res) => {
   try {
-    const { eventId } = req.body
+    const eventId = req.body.eventId || req.body.event_id
 
     const { error } = await supabase
       .from("events")
@@ -236,7 +236,7 @@ router.post("/mark-paid", async (req, res) => {
 // CANCEL EVENT (soft delete via status)
 router.post("/cancel", async (req, res) => {
   try {
-    const { eventId } = req.body
+    const eventId = req.body.eventId || req.body.event_id
 
     if (!eventId) {
       return res.status(400).json({ error: "Missing eventId" })
@@ -260,7 +260,8 @@ router.post("/cancel", async (req, res) => {
 
 router.post("/update-price", async (req, res) => {
   try {
-    const { eventId, custom_total_price } = req.body
+    const eventId = req.body.eventId || req.body.event_id
+    const { custom_total_price } = req.body
 
     if (!eventId) {
       return res.status(400).json({ success: false, error: "Missing eventId" })
@@ -335,7 +336,8 @@ router.get("/:id/bartenders", async (req, res) => {
 // ASSIGN BARTENDERS (relational model)
 router.post("/assign-bartenders", async (req, res) => {
   try {
-    const { eventId, bartenders } = req.body
+    const eventId = req.body.eventId || req.body.event_id
+    const { bartenders } = req.body
 
     if (!eventId || !Array.isArray(bartenders)) {
       return res.status(400).json({ success: false, error: "Invalid payload" })
