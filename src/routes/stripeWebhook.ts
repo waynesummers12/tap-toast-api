@@ -46,7 +46,7 @@ router.post(
       const eventId = session.metadata?.event_id
       const paymentType = session.metadata?.type || "deposit"
       const stripeSessionId = session.id
-      const amount = session.amount_total || 0
+      const amount = (session.amount_total || 0) / 100
 
       if (!eventId) {
         console.error("No event_id found in Stripe metadata")
@@ -60,7 +60,7 @@ router.post(
         .from("payments")
         .select("stripe_session_id")
         .eq("stripe_session_id", stripeSessionId)
-        .single()
+        .maybeSingle()
 
       if (existingPayment) {
         console.log("Webhook already processed for session", stripeSessionId)
