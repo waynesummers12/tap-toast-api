@@ -1,7 +1,11 @@
 import express from "express"
 import Stripe from "stripe"
 import { createClient } from "@supabase/supabase-js"
-import { sendBookingConfirmation, sendInternalNotification, sendPaymentReceivedEmail } from "../services/emailService"
+import {
+  sendBookingConfirmation,
+  sendInternalNotification,
+  sendPaymentReceivedEmail,
+} from "../services/emailService"
 import { createCalendarEvent } from "../services/calendarService"
 
 const router = express.Router()
@@ -15,33 +19,27 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY as string
 )
 
-router.post(
-  "/webhook",
-  async (req, res) => {
-    // Ensure raw body is a Buffer (Render/Express compatibility)
+router.post("/webhook", async (req, res) => {
+  try {
+    // 🔥 Ensure raw buffer
     if (!(req.body instanceof Buffer)) {
       req.body = Buffer.from(req.body)
     }
 
     const sig = req.headers["stripe-signature"] as string
 
-    let event: Stripe.Event
+    const event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET as string
+    )
 
-    try {
-      const rawBody = req.body as Buffer
-      event = stripe.webhooks.constructEvent(
-        rawBody,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET as string
-      )
-    } catch (err: any) {
-      console.error("Webhook signature verification failed.", err.message)
-      return res.status(400).send(`Webhook Error: ${err.message}`)
-    }
-
+    // 🔥 Only handle checkout success
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session
+
       console.log("🔥 Webhook received: checkout.session.completed")
+      console.log("📦 STRIPE SESSION:", JSON.stringify(session, null, 2))
 
       const eventId = session.metadata?.event_id
       const paymentType = session.metadata?.type || "deposit"
@@ -49,48 +47,60 @@ router.post(
       const amount = (session.amount_total || 0) / 100
 
       if (!eventId) {
-        console.error("No event_id found in Stripe metadata")
+        console.error("❌ No event_id in metadata")
         return res.json({ received: true })
       }
 
       console.log(`💰 Payment received (${paymentType}) for event:`, eventId)
 
-      // Prevent duplicate processing
+      // 🔁 Prevent duplicate processing
       const { data: existingPayment } = await supabase
         .from("payments")
-        .select("stripe_session_id")
+        .select("id")
         .eq("stripe_session_id", stripeSessionId)
         .maybeSingle()
 
       if (existingPayment) {
-        console.log("Webhook already processed for session", stripeSessionId)
+        console.log("⚠️ Webhook already processed:", stripeSessionId)
         return res.json({ received: true })
       }
 
-      // ✅ SAVE PAYMENT (THIS WAS MISSING)
-      await supabase.from("payments").insert({
-        event_id: eventId,
-        amount: amount,
-        type: paymentType,
-        status: "completed",
-        stripe_session_id: stripeSessionId,
-      })
+      // ✅ Save payment
+      const { error: paymentError } = await supabase
+        .from("payments")
+        .insert({
+          event_id: eventId,
+          amount,
+          type: paymentType,
+          status: "completed",
+          stripe_session_id: stripeSessionId,
+        })
 
-      console.log("✅ Payment saved to database")
+      if (paymentError) {
+        console.error("❌ Payment insert failed:", paymentError)
+      } else {
+        console.log("✅ Payment saved")
+      }
 
+      // 🔄 UPDATE EVENT (deposit)
       if (paymentType === "deposit") {
-        await supabase
+        const { error: updateError } = await supabase
           .from("events")
           .update({
             deposit_paid: true,
             event_status: "confirmed",
-            stripe_session_id: stripeSessionId
+            stripe_session_id: stripeSessionId,
           })
           .eq("id", eventId)
 
+        if (updateError) {
+          console.error("❌ Event update failed:", updateError)
+        }
+
         const { data: eventData } = await supabase
           .from("events")
-          .select(`
+          .select(
+            `
             *,
             customer:customers (
               id,
@@ -98,41 +108,45 @@ router.post(
               email,
               phone
             )
-          `)
+          `
+          )
           .eq("id", eventId)
           .single()
 
         if (eventData) {
           try {
-            console.log("📧 Sending booking + internal emails...")
-            console.log("📦 EVENT DATA:", JSON.stringify(eventData, null, 2))
-            console.log("📧 CUSTOMER EMAIL:", eventData?.customer?.email)
+            console.log("📧 Sending deposit emails...")
             await sendBookingConfirmation(eventData)
             await sendInternalNotification(eventData)
             await createCalendarEvent(eventData)
             await sendPaymentReceivedEmail(eventData, "deposit")
-            console.log("✅ Emails + calendar event sent")
             console.log("✅ Deposit flow completed")
           } catch (err) {
-            console.error("Post-deposit tasks failed", err)
+            console.error("❌ Post-deposit tasks failed:", err)
           }
         }
       }
 
+      // 🔄 UPDATE EVENT (balance)
       if (paymentType === "balance") {
-        await supabase
+        const { error: updateError } = await supabase
           .from("events")
           .update({
             balance_paid: true,
             deposit_paid: true,
             balance_due: 0,
-            event_status: "confirmed"
+            event_status: "confirmed",
           })
           .eq("id", eventId)
 
+        if (updateError) {
+          console.error("❌ Balance update failed:", updateError)
+        }
+
         const { data: eventData } = await supabase
           .from("events")
-          .select(`
+          .select(
+            `
             *,
             customer:customers (
               id,
@@ -140,36 +154,34 @@ router.post(
               email,
               phone
             )
-          `)
+          `
+          )
           .eq("id", eventId)
           .single()
 
         if (eventData) {
           try {
-            console.log("📧 Sending booking + internal emails (balance)...")
-            console.log("📦 EVENT DATA (BALANCE):", JSON.stringify(eventData, null, 2))
-            console.log("📧 CUSTOMER EMAIL (BALANCE):", eventData?.customer?.email)
+            console.log("📧 Sending balance emails...")
             await sendInternalNotification(eventData)
             await sendPaymentReceivedEmail(eventData, "balance")
-            console.log("✅ Emails sent (balance)")
             console.log("✅ Balance flow completed")
           } catch (err) {
-            console.error("Post-balance tasks failed", err)
+            console.error("❌ Post-balance tasks failed:", err)
           }
         }
       }
 
-      // 🚀 HANDLE UPGRADES
+      // 🚀 Upgrade placeholder
       if (paymentType === "upgrade") {
         console.log("🔥 Upgrade purchased for event:", eventId)
-
-        // OPTIONAL: you can extend this later to update event fields
-        // ex: add extra hours, premium bar, etc.
       }
     }
 
     res.json({ received: true })
+  } catch (err: any) {
+    console.error("❌ Webhook error:", err.message)
+    res.status(400).send(`Webhook Error: ${err.message}`)
   }
-)
+})
 
 export default router
