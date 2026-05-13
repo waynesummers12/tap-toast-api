@@ -20,7 +20,7 @@ const app = express()
 app.use(cors())
 
 // 🔥 Stripe webhook MUST be defined BEFORE express.json
-app.post(
+app.use(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
   stripeWebhook
