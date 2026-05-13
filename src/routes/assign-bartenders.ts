@@ -21,6 +21,28 @@ type BartenderRoster = {
   pay_rate?: number
 }
 
+type AssignBartendersPayload = {
+  eventId?: string
+  event_id?: string
+  bartenders: BartenderInput[]
+}
+
+function validateAssignPayload(body: any): { eventId: string; bartenders: BartenderInput[] } | null {
+  const eventId = body?.eventId || body?.event_id
+  const bartenders = body?.bartenders
+
+  if (!eventId) return null
+  if (!Array.isArray(bartenders)) return null
+
+  const valid = bartenders.every(
+    (b: any) => typeof b.id === "string"
+  )
+
+  if (!valid) return null
+
+  return { eventId, bartenders }
+}
+
 // Get bartender roster
 router.get("/bartenders", async (req, res) => {
   try {
@@ -71,12 +93,19 @@ router.post("/bartenders", async (req, res) => {
 // Assign bartenders to an event
 router.post("/events/assign-bartenders", async (req, res) => {
   try {
-    const event_id = req.body.eventId || req.body.event_id
-    const { bartenders } = req.body as { bartenders: BartenderInput[] }
+    const parsed = validateAssignPayload(req.body)
 
-    if (!event_id || !Array.isArray(bartenders) || bartenders.length === 0) {
+    if (!parsed) {
       return res.status(400).json({
-        error: "event_id and bartenders[] are required"
+        error: "Invalid payload: expected eventId/event_id and bartenders[]"
+      })
+    }
+
+    const { eventId, bartenders } = parsed
+
+    if (bartenders.length === 0) {
+      return res.status(400).json({
+        error: "eventId and bartenders[] are required"
       })
     }
 
@@ -84,7 +113,7 @@ router.post("/events/assign-bartenders", async (req, res) => {
     const { error: deleteError } = await supabase
       .from("event_bartenders")
       .delete()
-      .eq("event_id", event_id)
+      .eq("event_id", eventId)
 
     if (deleteError) {
       console.error(deleteError)
@@ -93,11 +122,11 @@ router.post("/events/assign-bartenders", async (req, res) => {
 
     // Create rows for new assignments
     const rows = bartenders.map((b) => ({
-  event_id,
-  bartender_id: b.id,
-  hours: b.hours ?? null,
-  pay: b.pay ?? null
-}))
+      event_id: eventId,
+      bartender_id: b.id,
+      hours: b.hours ?? null,
+      pay: b.pay ?? null
+    }))
 
     const { error: insertError } = await supabase
       .from("event_bartenders")
@@ -111,11 +140,11 @@ router.post("/events/assign-bartenders", async (req, res) => {
     const { count } = await supabase
       .from("event_bartenders")
       .select("id", { count: "exact", head: true })
-      .eq("event_id", event_id)
+      .eq("event_id", eventId)
 
     res.json({
       success: true,
-      event_id,
+      event_id: eventId,
       assigned_count: count || 0
     })
 

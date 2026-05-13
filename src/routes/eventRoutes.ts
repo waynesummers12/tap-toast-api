@@ -9,17 +9,61 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY as string
 )
 
+type CreateEventPayload = {
+  name: string
+  email: string
+  phone?: string
+  event_date: string
+  location: string
+  start_time: string
+  hours: number
+  bartenders: number
+  total_price?: number
+  custom_total_price?: number
+}
+
+function parseCreateEvent(body: any): CreateEventPayload | null {
+  if (!body) return null
+  const required = ["name","email","event_date","location","start_time"]
+  for (const k of required) {
+    if (!body[k]) return null
+  }
+  return {
+    name: String(body.name),
+    email: String(body.email),
+    phone: body.phone ? String(body.phone) : undefined,
+    event_date: String(body.event_date),
+    location: String(body.location),
+    start_time: String(body.start_time),
+    hours: Number(body.hours || 0),
+    bartenders: Number(body.bartenders || 0),
+    total_price: body.total_price ? Number(body.total_price) : undefined,
+    custom_total_price: body.custom_total_price ? Number(body.custom_total_price) : undefined,
+  }
+}
+
+function parseUpdatePrice(body: any): { eventId: string; custom: number } | null {
+  const eventId = body?.eventId || body?.event_id
+  if (!eventId) return null
+  const custom = Number(body?.custom_total_price || 0)
+  return { eventId, custom }
+}
+
 // CREATE EVENT (booking flow + email trigger)
 router.post("/create", async (req, res) => {
   try {
+    const parsed = parseCreateEvent(req.body)
+    if (!parsed) {
+      return res.status(400).json({ error: "Invalid create payload" })
+    }
     // 🔥 Create or fetch customer
     const { data: customer, error: customerError } = await supabase
       .from("customers")
       .upsert(
         {
-          name: req.body.name,
-          email: req.body.email,
-          phone: req.body.phone
+          name: parsed.name,
+          email: parsed.email,
+          phone: parsed.phone
         },
         { onConflict: "email" }
       )
@@ -29,17 +73,17 @@ router.post("/create", async (req, res) => {
     if (customerError) throw customerError
 
     // 🔥 SAFE PRICING CALCULATION (with custom override)
-    const hours = Number(req.body.hours || 0)
-    const bartenders = Number(req.body.bartenders || 0)
+    const hours = Number(parsed.hours || 0)
+    const bartenders = Number(parsed.bartenders || 0)
     const base = 600
     const staffing = bartenders * hours * 40
 
-    const customTotal = Number(req.body.custom_total_price || 0)
+    const customTotal = Number(parsed.custom_total_price || 0)
 
     const safeTotal = customTotal > 0
       ? customTotal
-      : (Number(req.body.total_price) > 0
-          ? Number(req.body.total_price)
+      : (Number(parsed.total_price) > 0
+          ? Number(parsed.total_price)
           : base + staffing)
 
     const deposit = safeTotal * 0.5
@@ -47,9 +91,9 @@ router.post("/create", async (req, res) => {
 
     const eventData = {
       customer_id: customer.id,
-      event_date: req.body.event_date,
-      location: req.body.location,
-      start_time: req.body.start_time,
+      event_date: parsed.event_date,
+      location: parsed.location,
+      start_time: parsed.start_time,
       hours,
       bartenders,
       custom_total_price: customTotal > 0 ? customTotal : null,
@@ -260,14 +304,11 @@ router.post("/cancel", async (req, res) => {
 
 router.post("/update-price", async (req, res) => {
   try {
-    const eventId = req.body.eventId || req.body.event_id
-    const { custom_total_price } = req.body
-
-    if (!eventId) {
-      return res.status(400).json({ success: false, error: "Missing eventId" })
+    const parsed = parseUpdatePrice(req.body)
+    if (!parsed) {
+      return res.status(400).json({ success: false, error: "Invalid payload" })
     }
-
-    const custom = Number(custom_total_price || 0)
+    const { eventId, custom } = parsed
 
     // 🔥 Recalculate pricing
     const total = custom
