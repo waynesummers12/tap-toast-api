@@ -19,7 +19,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY as string
 )
 
-router.post("/webhook", async (req, res) => {
+router.post("/", async (req, res) => {
   try {
     // 🔥 Ensure raw buffer
     if (!(req.body instanceof Buffer)) {
