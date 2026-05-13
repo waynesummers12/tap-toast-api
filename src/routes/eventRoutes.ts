@@ -296,4 +296,101 @@ router.post("/update-price", async (req, res) => {
   }
 })
 
+router.get("/:id/bartenders", async (req, res) => {
+  try {
+    const { id: eventId } = req.params
+
+    const { data, error } = await supabase
+      .from("event_bartenders")
+      .select(`
+        hours,
+        pay,
+        bartenders (
+          id,
+          name
+        )
+      `)
+      .eq("event_id", eventId)
+
+    if (error) {
+      console.error("Fetch bartenders error:", error)
+      return res.status(500).json({ bartenders: [] })
+    }
+
+    return res.json({
+      event_id: eventId,
+      bartenders: (data || []).map((b: any) => ({
+        name: b.bartenders?.name,
+        hours: b.hours,
+        pay: b.pay
+      }))
+    })
+
+  } catch (err) {
+    console.error(err)
+    return res.status(500).json({ bartenders: [] })
+  }
+})
+
+// ASSIGN BARTENDERS (relational model)
+router.post("/assign-bartenders", async (req, res) => {
+  try {
+    const { eventId, bartenders } = req.body
+
+    if (!eventId || !Array.isArray(bartenders)) {
+      return res.status(400).json({ success: false, error: "Invalid payload" })
+    }
+
+    // 🔥 Get bartender IDs from names
+    const { data: bartenderRows, error: bartenderError } = await supabase
+      .from("bartenders")
+      .select("id, name")
+
+    if (bartenderError) throw bartenderError
+
+    const nameToIdMap: Record<string, string> = {}
+    ;(bartenderRows || []).forEach((b: any) => {
+      nameToIdMap[b.name] = b.id
+    })
+
+    // 🔥 Delete existing assignments for this event
+    const { error: deleteError } = await supabase
+      .from("event_bartenders")
+      .delete()
+      .eq("event_id", eventId)
+
+    if (deleteError) throw deleteError
+
+    // 🔥 Insert new assignments
+    const inserts = bartenders
+      .map((b: any) => {
+        const bartenderId = nameToIdMap[b.name]
+
+        if (!bartenderId) return null
+
+        return {
+          event_id: eventId,
+          bartender_id: bartenderId,
+          hours: b.hours || 0,
+          pay: b.pay || 0
+        }
+      })
+      .filter(Boolean)
+
+    if (inserts.length > 0) {
+      const { error: insertError } = await supabase
+        .from("event_bartenders")
+        .insert(inserts)
+
+      if (insertError) throw insertError
+    }
+
+    return res.json({ success: true })
+
+  } catch (err) {
+    console.error("Assign bartenders error:", err)
+    return res.status(500).json({ success: false })
+  }
+})
+
 export default router
