@@ -12,16 +12,36 @@ const supabase = createClient(
 // CREATE EVENT (booking flow + email trigger)
 router.post("/create", async (req, res) => {
   try {
-    const eventData = { ...req.body }
+    // 🔥 Create or fetch customer
+    const { data: customer, error: customerError } = await supabase
+      .from("customers")
+      .upsert(
+        {
+          name: req.body.name,
+          email: req.body.email,
+          phone: req.body.phone
+        },
+        { onConflict: "email" }
+      )
+      .select("id, name, email")
+      .single()
 
-    // 🔥 Strip unsupported fields not in DB schema
-    delete eventData.cid
-    delete eventData.name
-    delete eventData.email
-    delete eventData.phone
-    delete eventData.event_type
-    delete eventData.guests
-    delete eventData.upgrades
+    if (customerError) throw customerError
+
+    const eventData = {
+      customer_id: customer.id,
+      event_date: req.body.event_date,
+      location: req.body.location,
+      start_time: req.body.start_time,
+      hours: req.body.hours,
+      bartenders: req.body.bartenders || 0,
+      total_price: req.body.total_price,
+      deposit_amount: req.body.deposit_amount,
+      balance_due: req.body.balance_due,
+      deposit_paid: false,
+      balance_paid: false,
+      event_status: "pending"
+    }
 
     const { data: event, error } = await supabase
       .from("events")
