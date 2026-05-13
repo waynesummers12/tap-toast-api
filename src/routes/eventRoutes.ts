@@ -1,5 +1,6 @@
 import { Router } from "express"
 import { createClient } from "@supabase/supabase-js"
+import { sendBookingConfirmation, sendInternalNotification } from "../services/emailService"
 
 const router = Router()
 
@@ -7,6 +8,43 @@ const supabase = createClient(
   process.env.SUPABASE_URL as string,
   process.env.SUPABASE_SERVICE_ROLE_KEY as string
 )
+
+// CREATE EVENT (booking flow + email trigger)
+router.post("/create", async (req, res) => {
+  try {
+    const eventData = req.body
+
+    const { data: event, error } = await supabase
+      .from("events")
+      .insert([eventData])
+      .select(`
+        *,
+        customers (
+          name,
+          email
+        )
+      `)
+      .single()
+
+    if (error) throw error
+
+    console.log("📦 EVENT CREATED:", event.id)
+
+    try {
+      console.log("📧 Sending booking confirmation emails...")
+      await sendBookingConfirmation(event)
+      await sendInternalNotification(event)
+    } catch (emailErr) {
+      console.error("❌ Email send failed (non-blocking):", emailErr)
+    }
+
+    res.json({ success: true, event })
+
+  } catch (err) {
+    console.error("Create event error:", err)
+    res.status(500).json({ error: "Failed to create event" })
+  }
+})
 
 // GET all events
 router.get("/", async (req, res) => {
