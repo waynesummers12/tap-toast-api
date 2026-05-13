@@ -257,4 +257,43 @@ router.post("/cancel", async (req, res) => {
     res.status(500).json({ error: "Failed to cancel event" })
   }
 })
+
+router.post("/update-price", async (req, res) => {
+  try {
+    const { eventId, custom_total_price } = req.body
+
+    if (!eventId) {
+      return res.status(400).json({ success: false, error: "Missing eventId" })
+    }
+
+    const custom = Number(custom_total_price || 0)
+
+    // 🔥 Recalculate pricing
+    const total = custom
+    const deposit = total * 0.5
+    const balance = total - deposit
+
+    const { error } = await supabase
+      .from("events")
+      .update({
+        custom_total_price: custom > 0 ? custom : null,
+        total_price: total,
+        deposit_amount: deposit,
+        balance_due: balance
+      })
+      .eq("id", eventId)
+
+    if (error) {
+      console.error("Update price error:", error)
+      return res.status(500).json({ success: false })
+    }
+
+    return res.json({ success: true })
+
+  } catch (err) {
+    console.error(err)
+    return res.status(500).json({ success: false })
+  }
+})
+
 export default router
