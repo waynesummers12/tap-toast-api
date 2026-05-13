@@ -4,6 +4,7 @@ console.log("🔑 STRIPE KEY IN USE:", process.env.STRIPE_SECRET_KEY)
 
 import express from "express"
 import cors from "cors"
+import stripeWebhook from "./routes/stripeWebhook"
 
 // Start background worker (only when enabled)
 if (process.env.ENABLE_REMINDERS !== "false") {
@@ -38,7 +39,6 @@ app.get("/", (req: any, res: any) => {
 // Routes
 import bookingRoutes from "./routes/bookingRoutes"
 const stripeRoutes = require("./routes/stripeRoutes").default
-import stripeWebhook from "./routes/stripeWebhook"
 import eventRoutes from "./routes/eventRoutes"
 import bartenderRoutes from "./routes/bartenderRoutes"
 import assignBartendersRoutes from "./routes/assign-bartenders"
