@@ -17,12 +17,15 @@ router.get("/", async (req, res) => {
         id,
         event_date,
         location,
+        start_time,
         hours,
         bartenders_needed,
         total_price,
         deposit_amount,
         balance_due,
         deposit_paid,
+        balance_paid,
+        event_status,
         bartenders,
         customers (
           name,
@@ -32,6 +35,7 @@ router.get("/", async (req, res) => {
           id
         )
       `)
+      .neq("event_status", "cancelled")
       .order("event_date", { ascending: true })
 
     if (error) throw error
@@ -143,4 +147,29 @@ router.post("/mark-paid", async (req, res) => {
   }
 })
 
+
+// CANCEL EVENT (soft delete via status)
+router.post("/cancel", async (req, res) => {
+  try {
+    const { eventId } = req.body
+
+    if (!eventId) {
+      return res.status(400).json({ error: "Missing eventId" })
+    }
+
+    const { error } = await supabase
+      .from("events")
+      .update({
+        event_status: "cancelled"
+      })
+      .eq("id", eventId)
+
+    if (error) throw error
+
+    res.json({ success: true })
+  } catch (err) {
+    console.error("Cancel event error:", err)
+    res.status(500).json({ error: "Failed to cancel event" })
+  }
+})
 export default router
