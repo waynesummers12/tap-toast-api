@@ -13,6 +13,8 @@ const supabase = createClient(
 router.post("/create", async (req, res) => {
   try {
     const eventData = { ...req.body }
+    // 🔥 Strip unsupported fields not in DB schema
+    delete eventData.cid
 
     const { data: event, error } = await supabase
       .from("events")
