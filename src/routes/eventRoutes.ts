@@ -12,7 +12,10 @@ const supabase = createClient(
 // CREATE EVENT (booking flow + email trigger)
 router.post("/create", async (req, res) => {
   try {
-    const eventData = req.body
+    const eventData = { ...req.body }
+
+    // 🔥 Strip unsupported / legacy fields that are not in DB schema
+    delete eventData.bartenders
 
     const { data: event, error } = await supabase
       .from("events")
