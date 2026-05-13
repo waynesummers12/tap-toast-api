@@ -42,9 +42,15 @@ router.post("/create-checkout-session", async (req, res) => {
 
     const isDeposit = type === "deposit"
 
-    const amount = isDeposit
+    let amount = isDeposit
       ? event.deposit_amount
       : event.balance_due
+
+    // 🔥 Fallback if amount missing (prevents $0 Stripe bug)
+    if (!amount || amount === 0) {
+      const total = Number(event.total_price || 0)
+      amount = total * 0.5
+    }
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
