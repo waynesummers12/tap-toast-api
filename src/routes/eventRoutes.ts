@@ -28,16 +28,29 @@ router.post("/create", async (req, res) => {
 
     if (customerError) throw customerError
 
+    // 🔥 SAFE PRICING CALCULATION
+    const hours = Number(req.body.hours || 0)
+    const bartenders = Number(req.body.bartenders || 0)
+    const base = 600
+    const staffing = bartenders * hours * 40
+
+    const safeTotal = Number(req.body.total_price) > 0
+      ? Number(req.body.total_price)
+      : base + staffing
+
+    const deposit = safeTotal * 0.5
+    const balance = safeTotal - deposit
+
     const eventData = {
       customer_id: customer.id,
       event_date: req.body.event_date,
       location: req.body.location,
       start_time: req.body.start_time,
-      hours: req.body.hours,
-      bartenders: req.body.bartenders || 0,
-      total_price: req.body.total_price,
-      deposit_amount: req.body.deposit_amount,
-      balance_due: req.body.balance_due,
+      hours,
+      bartenders,
+      total_price: safeTotal,
+      deposit_amount: deposit,
+      balance_due: balance,
       deposit_paid: false,
       balance_paid: false,
       event_status: "pending"
