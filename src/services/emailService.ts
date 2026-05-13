@@ -6,6 +6,16 @@ const INTERNAL_EMAILS = [
   "waynesummers12@gmail.com"
 ]
 
+function getRecipient(event: any): string | null {
+  return (
+    event.customer?.email ||
+    event.customer_email ||
+    event.email ||
+    event.metadata?.customer_email ||
+    null
+  )
+}
+
 const UPGRADE_LABELS: Record<string, string> = {
   garnishes: "Premium Garnishes",
   cocktails: "Signature Cocktails",
@@ -82,9 +92,15 @@ function formatTime(time: string) {
 
 export async function sendBookingConfirmation(event: any) {
   try {
+    console.log("📨 Sending booking confirmation for event:", event.id)
+    const recipient = getRecipient(event)
+    if (!recipient) {
+      console.error("❌ No email found for event:", event)
+      return
+    }
     await resend.emails.send({
       from: "Tap & Toast <jen@coloradotapandtoast.com>",
-      to: event.customer?.email || event.customer_email || event.email,
+      to: recipient,
       bcc: INTERNAL_EMAILS,
       subject: "🎉 Your Tap & Toast Event is Confirmed",
       html: `
@@ -235,9 +251,14 @@ export async function sendInternalNotification(event: any) {
 }
 export async function sendBalancePaymentEmail(event: any, paymentUrl: string) {
   try {
+    const recipient = getRecipient(event)
+    if (!recipient) {
+      console.error("❌ No email found for event:", event)
+      return
+    }
     await resend.emails.send({
       from: "Tap & Toast <jen@coloradotapandtoast.com>",
-      to: event.customer?.email || event.customer_email || event.email,
+      to: recipient,
       bcc: INTERNAL_EMAILS,
       subject: "Final Payment Due – Colorado Tap & Toast",
       html: `
@@ -299,9 +320,15 @@ export async function sendBalancePaymentEmail(event: any, paymentUrl: string) {
 }
 export async function sendPaymentReceivedEmail(event: any, type: "deposit" | "balance") {
   try {
+    console.log("📨 Sending payment received email:", type, event.id)
+    const recipient = getRecipient(event)
+    if (!recipient) {
+      console.error("❌ No email found for event:", event)
+      return
+    }
     await resend.emails.send({
       from: "Tap & Toast <jen@coloradotapandtoast.com>",
-      to: event.customer?.email || event.customer_email || event.email,
+      to: recipient,
       bcc: INTERNAL_EMAILS,
       subject: type === "deposit"
         ? "🎉 Deposit Received – You're Booked!"
@@ -369,9 +396,14 @@ export async function sendPaymentReceivedEmail(event: any, type: "deposit" | "ba
 }
 export async function send15DayReminderEmail(event: any, paymentUrl?: string) {
   try {
+    const recipient = getRecipient(event)
+    if (!recipient) {
+      console.error("❌ No email found for event:", event)
+      return
+    }
     await resend.emails.send({
       from: "Tap & Toast <jen@coloradotapandtoast.com>",
-      to: event.customer?.email || event.customer_email || event.email,
+      to: recipient,
       bcc: INTERNAL_EMAILS,
       subject: "🍸 Your Event is Coming Up – 15 Day Reminder",
       html: `
