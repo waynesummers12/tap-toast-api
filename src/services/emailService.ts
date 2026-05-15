@@ -482,3 +482,92 @@ export async function send15DayReminderEmail(event: any, paymentUrl?: string) {
     console.error("15-day reminder email error:", error)
   }
 }
+
+export async function sendAbandonedQuoteEmail({
+  name,
+  email,
+  event_date,
+  location,
+  estimated_total,
+  deposit
+}: {
+  name: string
+  email: string
+  event_date: string
+  location: string
+  estimated_total: number
+  deposit: number
+}) {
+  try {
+    const eventDate = new Date(event_date).toLocaleDateString()
+
+    setTimeout(async () => {
+      try {
+        await resend.emails.send({
+          from: "Tap & Toast <jen@coloradotapandtoast.com>",
+          to: email,
+          bcc: INTERNAL_EMAILS,
+          subject: "Your Tap & Toast Quote 🍸",
+          html: `
+          <div style="font-family: Arial, sans-serif; background-color: #000000; padding: 30px; color: #ffffff;">
+
+            <div style="max-width: 600px; margin: 0 auto; background: #111111; border-radius: 10px; overflow: hidden; border: 1px solid #222;">
+
+              <div style="background: linear-gradient(to right, #facc15, #eab308); padding: 20px; text-align: center;">
+                <h1 style="margin: 0; font-size: 24px; color: #000;">Tap & Toast</h1>
+                <p style="margin: 0; font-size: 14px; color: #000;">Mobile Bar Experience</p>
+              </div>
+
+              <div style="padding: 25px;">
+
+                <h2 style="margin-top: 0;">We Saved Your Quote</h2>
+
+                <p>Hi <strong>${name || "there"}</strong>,</p>
+
+                <p>
+                  We saved your quote for your upcoming event.
+                </p>
+
+                <div style="margin: 20px 0; padding: 15px; background: #1a1a1a; border-radius: 8px;">
+                  <h3 style="margin-top: 0; color: #facc15;">Quote Details</h3>
+                  <p style="margin: 5px 0;"><strong>Date:</strong> ${eventDate}</p>
+                  <p style="margin: 5px 0;"><strong>Location:</strong> ${location}</p>
+                  <p style="margin: 5px 0;"><strong>Estimated Total:</strong> $${estimated_total}</p>
+                  <p style="margin: 5px 0; color: #22c55e;"><strong>Deposit to Secure Date:</strong> $${deposit}</p>
+                </div>
+
+                <p>
+                  Dates fill quickly — lock in your event below.
+                </p>
+
+                <div style="text-align: center; margin: 25px 0;">
+                  <a href="https://coloradotapandtoast.com/book" 
+                     style="display: inline-block; background: linear-gradient(to right, #facc15, #eab308); color: #000; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px;">
+                    Complete Your Booking
+                  </a>
+                </div>
+
+                <p style="margin-top: 25px;">
+                  Have questions? Just reply — happy to help.
+                </p>
+
+                <p style="margin-top: 30px;">Cheers,</p>
+                <p style="margin: 0;">Tap & Toast 🍸</p>
+
+              </div>
+
+            </div>
+
+          </div>
+          `
+        })
+
+        console.log("📧 Delayed abandoned quote email sent")
+      } catch (error) {
+        console.error("❌ Delayed abandoned email error:", error)
+      }
+    }, 15 * 60 * 1000) // 15 minutes delay
+  } catch (error) {
+    console.error("❌ Abandoned quote email error:", error)
+  }
+}

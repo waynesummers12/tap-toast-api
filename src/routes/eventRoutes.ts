@@ -1,6 +1,6 @@
 import { Router } from "express"
 import { createClient } from "@supabase/supabase-js"
-import { sendBookingConfirmation, sendInternalNotification } from "../services/emailService"
+import { sendBookingConfirmation, sendInternalNotification, sendAbandonedQuoteEmail } from "../services/emailService"
 
 const router = Router()
 
@@ -442,6 +442,81 @@ router.post("/assign-bartenders", async (req, res) => {
   } catch (err) {
     console.error("Assign bartenders error:", err)
     return res.status(500).json({ success: false })
+  }
+})
+
+// SAVE QUOTE (auto-save from booking page)
+router.post("/save-quote", async (req, res) => {
+  try {
+    const {
+      name,
+      email,
+      phone,
+      location,
+      event_date,
+      start_time,
+      hours,
+      guests,
+      bartenders,
+      event_type,
+      upgrades,
+      estimated_total,
+      deposit
+    } = req.body
+
+    if (!name || !email || !event_date) {
+      return res.status(400).json({ error: "Missing required fields" })
+    }
+
+    const { data, error } = await supabase
+      .from("quotes")
+      .insert([
+        {
+          name,
+          email,
+          phone,
+          location,
+          event_date,
+          start_time,
+          hours,
+          guests,
+          bartenders,
+          event_type,
+          upgrades,
+          estimated_total,
+          deposit,
+          status: "pending"
+        }
+      ])
+      .select()
+
+    if (error) {
+      console.error("❌ Quote save error:", error)
+      return res.status(500).json({ error: "Failed to save quote" })
+    }
+
+    console.log("💾 QUOTE SAVED:", data?.[0]?.id)
+
+    // 🔥 Send abandoned quote email
+    try {
+      await sendAbandonedQuoteEmail({
+        name,
+        email,
+        event_date,
+        location,
+        estimated_total,
+        deposit
+      })
+      console.log("📧 Abandoned quote email sent")
+    } catch (emailErr) {
+      console.error("❌ Abandoned quote email failed (non-blocking):", emailErr)
+    }
+
+    return res.json({ success: true })
+
+  } catch (err) {
+    console.error("❌ Save quote crash:", err)
+    return res.status(500).json({ error: "Server error" })
   }
 })
 
