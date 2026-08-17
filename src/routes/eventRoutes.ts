@@ -20,6 +20,12 @@ type CreateEventPayload = {
   bartenders: number
   total_price?: number
   custom_total_price?: number
+  estimated_total?: number
+  deposit_amount?: number
+  venue?: string
+  package_key?: string
+  package_name?: string
+  package_price?: number
 }
 
 function parseCreateEvent(body: any): CreateEventPayload | null {
@@ -39,6 +45,12 @@ function parseCreateEvent(body: any): CreateEventPayload | null {
     bartenders: Number(body.bartenders || 0),
     total_price: body.total_price ? Number(body.total_price) : undefined,
     custom_total_price: body.custom_total_price ? Number(body.custom_total_price) : undefined,
+    estimated_total: body.estimated_total ? Number(body.estimated_total) : undefined,
+    deposit_amount: body.deposit_amount ? Number(body.deposit_amount) : undefined,
+    venue: body.venue ? String(body.venue) : undefined,
+    package_key: body.package_key ? String(body.package_key) : undefined,
+    package_name: body.package_name ? String(body.package_name) : undefined,
+    package_price: body.package_price ? Number(body.package_price) : undefined,
   }
 }
 
@@ -79,12 +91,15 @@ router.post("/create", async (req, res) => {
     const staffing = bartenders * hours * 40
 
     const customTotal = Number(parsed.custom_total_price || 0)
+    const estimatedTotal = Number(parsed.estimated_total || 0)
 
     const safeTotal = customTotal > 0
       ? customTotal
-      : (Number(parsed.total_price) > 0
+      : estimatedTotal > 0
+        ? estimatedTotal
+        : Number(parsed.total_price) > 0
           ? Number(parsed.total_price)
-          : base + staffing)
+          : base + staffing
 
     const deposit = safeTotal * 0.5
     const balance = safeTotal - deposit
@@ -112,6 +127,17 @@ router.post("/create", async (req, res) => {
 
       status: "pending",
       event_status: "pending"
+    }
+
+    if (parsed.venue === "mountain-view") {
+      console.log("🏔️ MOUNTAIN VIEW BOOKING:", {
+        package_key: parsed.package_key,
+        package_name: parsed.package_name,
+        package_price: parsed.package_price,
+        safeTotal,
+        deposit,
+        balance
+      })
     }
 
     const { data: event, error } = await supabase
