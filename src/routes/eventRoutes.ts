@@ -1,6 +1,7 @@
 import { Router } from "express"
 import { createClient } from "@supabase/supabase-js"
 import { sendBookingConfirmation, sendInternalNotification, sendAbandonedQuoteEmail } from "../services/emailService"
+import { calculateMountainViewPricing } from "../services/pricingService"
 
 const router = Router()
 
@@ -26,6 +27,7 @@ type CreateEventPayload = {
   package_key?: string
   package_name?: string
   package_price?: number
+  guests?: number
 }
 
 function parseCreateEvent(body: any): CreateEventPayload | null {
@@ -51,6 +53,7 @@ function parseCreateEvent(body: any): CreateEventPayload | null {
     package_key: body.package_key ? String(body.package_key) : undefined,
     package_name: body.package_name ? String(body.package_name) : undefined,
     package_price: body.package_price ? Number(body.package_price) : undefined,
+    guests: body.guests !== undefined ? Number(body.guests) : undefined,
   }
 }
 
@@ -68,6 +71,21 @@ router.post("/create", async (req, res) => {
     if (!parsed) {
       return res.status(400).json({ error: "Invalid create payload" })
     }
+
+    const isMountainView = parsed.venue === "mountain-view"
+    let mountainViewPricing = null
+
+    if (isMountainView) {
+      if (!Number.isFinite(parsed.guests) || !Number.isInteger(parsed.guests) || Number(parsed.guests) <= 0) {
+        return res.status(400).json({ error: "Mountain View guests must be a positive whole number" })
+      }
+
+      mountainViewPricing = calculateMountainViewPricing(parsed.package_key || "", Number(parsed.guests))
+      if (!mountainViewPricing) {
+        return res.status(400).json({ error: "Unsupported Mountain View package" })
+      }
+    }
+
     // 🔥 Create or fetch customer
     const { data: customer, error: customerError } = await supabase
       .from("customers")
@@ -93,7 +111,7 @@ router.post("/create", async (req, res) => {
     const customTotal = Number(parsed.custom_total_price || 0)
     const estimatedTotal = Number(parsed.estimated_total || 0)
 
-    const safeTotal = customTotal > 0
+    const normalBookingTotal = customTotal > 0
       ? customTotal
       : estimatedTotal > 0
         ? estimatedTotal
@@ -101,8 +119,9 @@ router.post("/create", async (req, res) => {
           ? Number(parsed.total_price)
           : base + staffing
 
-    const deposit = safeTotal * 0.5
-    const balance = safeTotal - deposit
+    const safeTotal = mountainViewPricing?.totalPrice ?? normalBookingTotal
+    const deposit = mountainViewPricing?.depositAmount ?? safeTotal * 0.5
+    const balance = mountainViewPricing?.balanceDue ?? safeTotal - deposit
 
     const eventData = {
       customer_id: customer.id,
@@ -117,7 +136,7 @@ router.post("/create", async (req, res) => {
       base_price: 600,
       bartender_rate: 25,
 
-      custom_total_price: customTotal > 0 ? customTotal : null,
+      custom_total_price: isMountainView ? null : customTotal > 0 ? customTotal : null,
       total_price: safeTotal,
       deposit_amount: deposit,
       balance_due: balance,
@@ -129,7 +148,7 @@ router.post("/create", async (req, res) => {
       event_status: "pending"
     }
 
-    if (parsed.venue === "mountain-view") {
+    if (isMountainView) {
       console.log("🏔️ MOUNTAIN VIEW BOOKING:", {
         package_key: parsed.package_key,
         package_name: parsed.package_name,
