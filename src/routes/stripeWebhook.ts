@@ -2,7 +2,6 @@ import express from "express"
 import Stripe from "stripe"
 import { createClient } from "@supabase/supabase-js"
 import {
-  sendBookingConfirmation,
   sendInternalNotification,
   sendPaymentReceivedEmail,
 } from "../services/emailService"
@@ -116,7 +115,6 @@ router.post("/", async (req, res) => {
         if (eventData) {
           try {
             console.log("📧 Sending deposit emails...")
-            await sendBookingConfirmation(eventData)
             await sendInternalNotification(eventData)
             await createCalendarEvent(eventData)
             await sendPaymentReceivedEmail(eventData, "deposit")

@@ -1,6 +1,6 @@
 import { Router } from "express"
 import { createClient } from "@supabase/supabase-js"
-import { sendBookingConfirmation, sendInternalNotification, sendAbandonedQuoteEmail } from "../services/emailService"
+import { sendAbandonedQuoteEmail } from "../services/emailService"
 import { calculateMountainViewPricing } from "../services/pricingService"
 
 const router = Router()
@@ -174,14 +174,6 @@ router.post("/create", async (req, res) => {
     if (error) throw error
 
     console.log("📦 EVENT CREATED:", event.id)
-
-    try {
-      console.log("📧 Sending booking confirmation emails...")
-      await sendBookingConfirmation(event)
-      await sendInternalNotification(event)
-    } catch (emailErr) {
-      console.error("❌ Email send failed (non-blocking):", emailErr)
-    }
 
     res.json({ success: true, event })
 
