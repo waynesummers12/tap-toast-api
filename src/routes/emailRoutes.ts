@@ -1,10 +1,11 @@
 import express from "express"
 import { supabase } from "../lib/supabase"
 import { sendEmail } from "../lib/email"
+import { requireAdmin } from "../middleware/auth"
 
 const router = express.Router()
 
-router.post("/reminder", async (req, res) => {
+router.post("/reminder", requireAdmin, async (req, res) => {
   try {
     const { eventId, type } = req.body
 

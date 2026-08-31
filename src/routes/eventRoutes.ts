@@ -2,6 +2,7 @@ import { Router } from "express"
 import { createClient } from "@supabase/supabase-js"
 import { sendAbandonedQuoteEmail } from "../services/emailService"
 import { calculateMountainViewPricing } from "../services/pricingService"
+import { requireAdmin } from "../middleware/auth"
 
 const router = Router()
 
@@ -197,7 +198,7 @@ router.post("/create", async (req, res) => {
 })
 
 // GET all events
-router.get("/", async (req, res) => {
+router.get("/", requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("events")
@@ -358,7 +359,7 @@ router.get("/:eventId/payment-status", async (req, res) => {
 })
 
 // MARK EVENT FULLY PAID
-router.post("/mark-paid", async (req, res) => {
+router.post("/mark-paid", requireAdmin, async (req, res) => {
   try {
     const eventId = req.body.eventId || req.body.event_id
 
@@ -382,7 +383,7 @@ router.post("/mark-paid", async (req, res) => {
 
 
 // CANCEL EVENT (soft delete via status)
-router.post("/cancel", async (req, res) => {
+router.post("/cancel", requireAdmin, async (req, res) => {
   try {
     const eventId = req.body.eventId || req.body.event_id
 
@@ -406,7 +407,7 @@ router.post("/cancel", async (req, res) => {
   }
 })
 
-router.post("/update-price", async (req, res) => {
+router.post("/update-price", requireAdmin, async (req, res) => {
   try {
     const parsed = parseUpdatePrice(req.body)
     if (!parsed) {
@@ -442,7 +443,7 @@ router.post("/update-price", async (req, res) => {
   }
 })
 
-router.get("/:id/bartenders", async (req, res) => {
+router.get("/:id/bartenders", requireAdmin, async (req, res) => {
   try {
     const { id: eventId } = req.params
 
@@ -479,7 +480,7 @@ router.get("/:id/bartenders", async (req, res) => {
 })
 
 // ASSIGN BARTENDERS (relational model)
-router.post("/assign-bartenders", async (req, res) => {
+router.post("/assign-bartenders", requireAdmin, async (req, res) => {
   try {
     const eventId = req.body.eventId || req.body.event_id
     const { bartenders } = req.body

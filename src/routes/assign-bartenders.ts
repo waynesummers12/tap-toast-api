@@ -1,5 +1,6 @@
 import { Router } from "express"
 import { createClient } from "@supabase/supabase-js"
+import { requireAdmin } from "../middleware/auth"
 
 const router = Router()
 
@@ -44,7 +45,7 @@ function validateAssignPayload(body: any): { eventId: string; bartenders: Barten
 }
 
 // Get bartender roster
-router.get("/bartenders", async (req, res) => {
+router.get("/bartenders", requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("bartenders")
@@ -64,7 +65,7 @@ router.get("/bartenders", async (req, res) => {
 })
 
 // Add bartender to roster
-router.post("/bartenders", async (req, res) => {
+router.post("/bartenders", requireAdmin, async (req, res) => {
   try {
     const { name, phone, pay_rate } = req.body as BartenderRoster
 
@@ -91,7 +92,7 @@ router.post("/bartenders", async (req, res) => {
 })
 
 // Assign bartenders to an event
-router.post("/events/assign-bartenders", async (req, res) => {
+router.post("/events/assign-bartenders", requireAdmin, async (req, res) => {
   try {
     const parsed = validateAssignPayload(req.body)
 

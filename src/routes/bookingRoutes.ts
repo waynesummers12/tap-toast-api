@@ -1,6 +1,7 @@
 import express from "express"
 import { calculateEventPricing } from "../services/pricingService"
 import { supabase } from "../lib/supabase"
+import { requireAdmin } from "../middleware/auth"
 
 const router = express.Router()
 
@@ -108,7 +109,7 @@ router.post("/book-event", async (req: any, res: any) => {
 
 // GET /api/events
 // Returns all events for the dashboard with customer details
-router.get("/events", async (req: any, res: any) => {
+router.get("/events", requireAdmin, async (req: any, res: any) => {
   try {
     const { data, error } = await supabase
       .from("events")

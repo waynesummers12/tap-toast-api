@@ -3,6 +3,7 @@ import Stripe from "stripe"
 import { supabase } from "../lib/supabase"
 import { sendEmail } from "../lib/email"
 import { sendBalancePaymentEmail } from "../services/emailService"
+import { requireAdmin, requireAdminForNonDeposit } from "../middleware/auth"
 
 const router = express.Router()
 
@@ -67,7 +68,7 @@ const getEvent = async (eventId: string) => {
 }
 
 // CREATE CHECKOUT SESSION (used by dashboard)
-router.post("/create-checkout-session", async (req, res) => {
+router.post("/create-checkout-session", requireAdminForNonDeposit, async (req, res) => {
   try {
     const eventId = req.body.eventId || req.body.event_id
     const cid = req.body.cid ? String(req.body.cid) : undefined
@@ -158,7 +159,7 @@ router.post("/create-checkout-session", async (req, res) => {
 })
 
 // SEND DEPOSIT PAYMENT LINK
-router.post("/send-deposit", async (req, res) => {
+router.post("/send-deposit", requireAdmin, async (req, res) => {
   try {
     const eventId = req.body.eventId || req.body.event_id
 
@@ -221,7 +222,7 @@ router.post("/send-deposit", async (req, res) => {
 })
 
 // SEND BALANCE PAYMENT LINK
-router.post("/send-balance", async (req, res) => {
+router.post("/send-balance", requireAdmin, async (req, res) => {
   try {
     const eventId = req.body.eventId || req.body.event_id
 

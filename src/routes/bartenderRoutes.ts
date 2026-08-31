@@ -1,6 +1,7 @@
 
 
 import { Router } from "express"
+import { requireAdmin } from "../middleware/auth"
 
 const router = Router()
 
@@ -16,12 +17,12 @@ interface Bartender {
 let bartenders: Bartender[] = []
 
 // GET all bartenders
-router.get("/", (req, res) => {
+router.get("/", requireAdmin, (req, res) => {
   res.json(bartenders)
 })
 
 // CREATE bartender
-router.post("/create", (req, res) => {
+router.post("/create", requireAdmin, (req, res) => {
   const { name, email, phone, rate } = req.body
 
   if (!name) {
@@ -42,7 +43,7 @@ router.post("/create", (req, res) => {
 })
 
 // DELETE bartender
-router.post("/delete", (req, res) => {
+router.post("/delete", requireAdmin, (req, res) => {
   const { id } = req.body
 
   bartenders = bartenders.filter((b) => b.id !== id)
