@@ -40,6 +40,7 @@ async function markQuoteConverted(cid?: string | null) {
 
 type PaymentRecord = {
   id: string
+  status: string
   customer_email_sent_at: string | null
   internal_notification_sent_at: string | null
 }
@@ -50,7 +51,7 @@ async function getOrCreatePayment(input: {
   paymentType: string
   stripeSessionId: string
 }): Promise<{ payment: PaymentRecord; inserted: boolean }> {
-  const paymentFields = "id, customer_email_sent_at, internal_notification_sent_at"
+  const paymentFields = "id, status, customer_email_sent_at, internal_notification_sent_at"
   const { data: existingPayment, error: lookupError } = await supabase
     .from("payments")
     .select(paymentFields)
@@ -68,7 +69,7 @@ async function getOrCreatePayment(input: {
       event_id: input.eventId,
       amount: input.amount,
       type: input.paymentType,
-      status: "completed",
+      status: "received",
       stripe_session_id: input.stripeSessionId,
     })
     .select(paymentFields)
@@ -93,6 +94,35 @@ async function getOrCreatePayment(input: {
   }
 }
 
+async function markPaymentForReconciliation(paymentId: string) {
+  const { error } = await supabase
+    .from("payments")
+    .update({ status: "reconciliation_required" })
+    .eq("id", paymentId)
+
+  if (error) throw error
+}
+
+async function markPaymentCompleted(paymentId: string) {
+  const { error } = await supabase
+    .from("payments")
+    .update({ status: "completed" })
+    .eq("id", paymentId)
+
+  if (error) throw error
+}
+
+async function eventHasStripeSession(eventId: string, stripeSessionId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("events")
+    .select("stripe_session_id")
+    .eq("id", eventId)
+    .single()
+
+  if (error) throw error
+  return data?.stripe_session_id === stripeSessionId
+}
+
 async function markNotificationSent(
   paymentId: string,
   column: "customer_email_sent_at" | "internal_notification_sent_at"
@@ -106,6 +136,40 @@ async function markNotificationSent(
     .single()
 
   if (error) throw error
+}
+
+async function getExpectedAmountCents(
+  session: Stripe.Checkout.Session,
+  eventId: string,
+  paymentType: "deposit" | "balance"
+): Promise<number> {
+  const metadataAmount = session.metadata?.expected_amount_cents
+  if (metadataAmount && /^\d+$/.test(metadataAmount)) {
+    const expectedAmountCents = Number(metadataAmount)
+    if (Number.isSafeInteger(expectedAmountCents) && expectedAmountCents > 0) {
+      return expectedAmountCents
+    }
+  }
+
+  const persistedSession = await stripe.checkout.sessions.retrieve(session.id, {
+    expand: ["line_items"],
+  })
+  const lineItems = persistedSession.line_items?.data || []
+  const lineItemAmount = lineItems.length === 1 && lineItems[0].quantity === 1
+    ? lineItems[0].amount_total
+    : null
+
+  if (
+    persistedSession.metadata?.event_id !== eventId ||
+    persistedSession.metadata?.type !== paymentType ||
+    persistedSession.amount_total !== session.amount_total ||
+    !Number.isSafeInteger(lineItemAmount) ||
+    Number(lineItemAmount) <= 0
+  ) {
+    throw new Error("Invalid Stripe Checkout payment context")
+  }
+
+  return Number(lineItemAmount)
 }
 
 router.post("/", async (req, res) => {
@@ -141,6 +205,18 @@ router.post("/", async (req, res) => {
         return res.json({ received: true })
       }
 
+      if (paymentType === "deposit" || paymentType === "balance") {
+        const expectedAmountCents = await getExpectedAmountCents(session, eventId, paymentType)
+        if (session.amount_total !== expectedAmountCents) {
+          console.error("Stripe payment amount mismatch", {
+            eventId,
+            paymentType,
+            stripeSessionId,
+          })
+          return res.status(400).json({ error: "Payment amount mismatch" })
+        }
+      }
+
       console.log(`💰 Payment received (${paymentType}) for event:`, eventId)
 
       const paymentResult = await getOrCreatePayment({
@@ -153,9 +229,20 @@ router.post("/", async (req, res) => {
 
       console.log(paymentResult.inserted ? "✅ Payment saved" : "♻️ Reusing payment")
 
+      if (payment.status === "reconciliation_required") {
+        console.warn("Stripe payment remains pending reconciliation", {
+          eventId,
+          paymentType,
+          stripeSessionId,
+        })
+        return res.json({ received: true })
+      }
+
+      const paymentAlreadyApplied = !paymentResult.inserted && payment.status === "completed"
+
       // 🔄 UPDATE EVENT (deposit)
-      if (paymentType === "deposit") {
-        const { error: updateError } = await supabase
+      if (paymentType === "deposit" && !paymentAlreadyApplied) {
+        const { data: updatedEvent, error: updateError } = await supabase
           .from("events")
           .update({
             deposit_paid: true,
@@ -163,29 +250,59 @@ router.post("/", async (req, res) => {
             stripe_session_id: stripeSessionId,
           })
           .eq("id", eventId)
+          .or("deposit_paid.is.null,deposit_paid.eq.false")
           .select("id")
-          .single()
+          .maybeSingle()
 
         if (updateError) throw updateError
 
-        await markQuoteConverted(cid)
+        if (!updatedEvent && !(await eventHasStripeSession(eventId, stripeSessionId))) {
+          await markPaymentForReconciliation(payment.id)
+          console.warn("Completed Stripe payment requires reconciliation", {
+            eventId,
+            paymentType,
+            stripeSessionId,
+          })
+          return res.json({ received: true })
+        }
+
+        await markPaymentCompleted(payment.id)
       }
 
       // 🔄 UPDATE EVENT (balance)
-      if (paymentType === "balance") {
-        const { error: updateError } = await supabase
+      if (paymentType === "balance" && !paymentAlreadyApplied) {
+        const { data: updatedEvent, error: updateError } = await supabase
           .from("events")
           .update({
             balance_paid: true,
             deposit_paid: true,
             balance_due: 0,
             event_status: "confirmed",
+            stripe_session_id: stripeSessionId,
           })
           .eq("id", eventId)
+          .or("balance_paid.is.null,balance_paid.eq.false")
           .select("id")
-          .single()
+          .maybeSingle()
 
         if (updateError) throw updateError
+
+
+        if (!updatedEvent && !(await eventHasStripeSession(eventId, stripeSessionId))) {
+          await markPaymentForReconciliation(payment.id)
+          console.warn("Completed Stripe payment requires reconciliation", {
+            eventId,
+            paymentType,
+            stripeSessionId,
+          })
+          return res.json({ received: true })
+        }
+
+        await markPaymentCompleted(payment.id)
+      }
+
+      if (paymentType === "deposit") {
+        await markQuoteConverted(cid)
       }
 
       if (paymentType === "deposit" || paymentType === "balance") {

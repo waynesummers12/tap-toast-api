@@ -21,6 +21,11 @@ export const createDepositCheckout = async (eventId: string) => {
     throw new Error("Event not found")
   }
 
+  const amountCents = Math.round(Number(event.deposit_amount) * 100)
+  if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
+    throw new Error("Invalid deposit amount")
+  }
+
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
     mode: "payment",
@@ -32,7 +37,7 @@ export const createDepositCheckout = async (eventId: string) => {
           product_data: {
             name: `Tap & Toast Deposit — ${event.customers?.name}`
           },
-          unit_amount: event.deposit_amount * 100
+          unit_amount: amountCents
         },
         quantity: 1
       }
@@ -40,8 +45,9 @@ export const createDepositCheckout = async (eventId: string) => {
     success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${process.env.FRONTEND_URL}/book`,
     metadata: {
-      eventId: event.id,
-      type: "deposit"
+      event_id: event.id,
+      type: "deposit",
+      expected_amount_cents: String(amountCents)
     }
   })
 
@@ -59,6 +65,11 @@ export const createBalanceCheckout = async (eventId: string) => {
     throw new Error("Event not found")
   }
 
+  const amountCents = Math.round(Number(event.balance_due) * 100)
+  if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
+    throw new Error("Invalid balance amount")
+  }
+
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
     mode: "payment",
@@ -70,7 +81,7 @@ export const createBalanceCheckout = async (eventId: string) => {
           product_data: {
             name: `Tap & Toast Final Balance — ${event.customers?.name}`
           },
-          unit_amount: event.balance_due * 100
+          unit_amount: amountCents
         },
         quantity: 1
       }
@@ -78,8 +89,9 @@ export const createBalanceCheckout = async (eventId: string) => {
     success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${process.env.FRONTEND_URL}/dashboard`,
     metadata: {
-      eventId: event.id,
-      type: "balance"
+      event_id: event.id,
+      type: "balance",
+      expected_amount_cents: String(amountCents)
     }
   })
 

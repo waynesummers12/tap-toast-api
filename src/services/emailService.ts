@@ -1,8 +1,6 @@
 import { Resend } from "resend"
-import { supabase } from "../lib/supabase"
 
 const resend = new Resend(process.env.RESEND_API_KEY as string)
-const abandonedQuoteTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const INTERNAL_EMAILS = [
   "jen@coloradotapandtoast.com",
   "waynesummers12@gmail.com"
@@ -277,14 +275,17 @@ export async function sendInternalNotification(event: any, idempotencyKey?: stri
     throw error
   }
 }
-export async function sendBalancePaymentEmail(event: any, paymentUrl: string) {
+export async function sendBalancePaymentEmail(
+  event: any,
+  paymentUrl: string,
+  idempotencyKey?: string
+) {
   try {
     const recipient = getRecipient(event)
     if (!recipient) {
-      console.error("❌ No email found for event:", event)
-      return
+      throw new Error(`No customer email found for event ${event.id}`)
     }
-    await resend.emails.send({
+    const result = await resend.emails.send({
       from: "Tap & Toast <jen@coloradotapandtoast.com>",
       to: recipient,
       bcc: INTERNAL_EMAILS,
@@ -320,7 +321,7 @@ export async function sendBalancePaymentEmail(event: any, paymentUrl: string) {
             <div style="margin: 20px 0; padding: 15px; background: #1a1a1a; border-radius: 8px;">
               <h3 style="margin-top: 0; color: #facc15;">Payment Summary</h3>
               <p style="margin: 5px 0;"><strong>Remaining Balance:</strong> $${event.balance_due}</p>
-              <p style="margin: 5px 0; font-size: 12px; color: #aaa;">Due prior to your event</p>
+              <p style="margin: 5px 0; font-size: 12px; color: #aaa;">Remaining balance due 10 days before your event</p>
             </div>
 
             <div style="text-align: center; margin: 25px 0;">
@@ -339,13 +340,53 @@ export async function sendBalancePaymentEmail(event: any, paymentUrl: string) {
 
       </div>
       `
-    })
+    }, idempotencyKey ? { idempotencyKey } : undefined)
+
+    if (result.error) throw new Error(result.error.message)
 
     console.log("Balance payment email sent")
   } catch (error) {
     console.error("Balance email error:", error)
+    throw error
   }
 }
+
+export async function sendBalanceReminderEmail(
+  event: any,
+  paymentUrl: string,
+  daysBefore: number,
+  idempotencyKey: string,
+  html: string
+) {
+  const recipient = getRecipient(event)
+  if (!recipient) {
+    throw new Error(`No customer email found for event ${event.id}`)
+  }
+
+  const formattedDate = new Date(event.event_date).toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  })
+
+  if (!paymentUrl) {
+    throw new Error(`No balance payment URL provided for event ${event.id}`)
+  }
+
+  const result = await resend.emails.send({
+    from: "Tap & Toast <jen@coloradotapandtoast.com>",
+    to: recipient,
+    bcc: INTERNAL_EMAILS,
+    subject: daysBefore === 3
+      ? `Final Reminder — Your Event Is Almost Here (${formattedDate})`
+      : `Your Event Is Coming Up — Balance Due (${formattedDate})`,
+    html,
+  }, { idempotencyKey })
+
+  if (result.error) throw new Error(result.error.message)
+}
+
 export async function sendPaymentReceivedEmail(
   event: any,
   type: "deposit" | "balance",
@@ -444,14 +485,17 @@ export async function sendPaymentReceivedEmail(
     throw error
   }
 }
-export async function send15DayReminderEmail(event: any, paymentUrl?: string) {
+export async function send15DayReminderEmail(
+  event: any,
+  paymentUrl?: string,
+  idempotencyKey?: string
+) {
   try {
     const recipient = getRecipient(event)
     if (!recipient) {
-      console.error("❌ No email found for event:", event)
-      return
+      throw new Error(`No customer email found for event ${event.id}`)
     }
-    await resend.emails.send({
+    const result = await resend.emails.send({
       from: "Tap & Toast <jen@coloradotapandtoast.com>",
       to: recipient,
       bcc: INTERNAL_EMAILS,
@@ -525,121 +569,13 @@ export async function send15DayReminderEmail(event: any, paymentUrl?: string) {
 
       </div>
       `
-    })
+    }, idempotencyKey ? { idempotencyKey } : undefined)
+
+    if (result.error) throw new Error(result.error.message)
 
     console.log("15-day reminder email sent")
   } catch (error) {
     console.error("15-day reminder email error:", error)
-  }
-}
-
-export async function sendAbandonedQuoteEmail({
-  cid,
-  name,
-  email,
-  event_date,
-  location,
-  estimated_total,
-  deposit
-}: {
-  cid: string
-  name: string
-  email: string
-  event_date: string
-  location: string
-  estimated_total: number
-  deposit: number
-}) {
-  try {
-    const eventDate = new Date(event_date).toLocaleDateString()
-
-    const existingTimer = abandonedQuoteTimers.get(cid)
-    if (existingTimer) clearTimeout(existingTimer)
-
-    const timer = setTimeout(async () => {
-      try {
-        const { data: quote, error } = await supabase
-          .from("quotes")
-          .select("converted, status")
-          .eq("cid", cid)
-          .maybeSingle()
-
-        if (error || !quote || quote.converted === true || quote.status === "converted") {
-          if (error) console.error("❌ Abandoned quote conversion check failed")
-          return
-        }
-
-        await resend.emails.send({
-          from: "Tap & Toast <jen@coloradotapandtoast.com>",
-          to: email,
-          bcc: INTERNAL_EMAILS,
-          subject: "Your Tap & Toast Quote 🍸",
-          html: `
-          <div style="font-family: Arial, sans-serif; background-color: #000000; padding: 30px; color: #ffffff;">
-
-            <div style="max-width: 600px; margin: 0 auto; background: #111111; border-radius: 10px; overflow: hidden; border: 1px solid #222;">
-
-              <div style="background: linear-gradient(to right, #facc15, #eab308); padding: 20px; text-align: center;">
-                <h1 style="margin: 0; font-size: 24px; color: #000;">Tap & Toast</h1>
-                <p style="margin: 0; font-size: 14px; color: #000;">Mobile Bar Experience</p>
-              </div>
-
-              <div style="padding: 25px;">
-
-                <h2 style="margin-top: 0;">We Saved Your Quote</h2>
-
-                <p>Hi <strong>${name || "there"}</strong>,</p>
-
-                <p>
-                  We saved your quote for your upcoming event.
-                </p>
-
-                <div style="margin: 20px 0; padding: 15px; background: #1a1a1a; border-radius: 8px;">
-                  <h3 style="margin-top: 0; color: #facc15;">Quote Details</h3>
-                  <p style="margin: 5px 0;"><strong>Date:</strong> ${eventDate}</p>
-                  <p style="margin: 5px 0;"><strong>Location:</strong> ${location}</p>
-                  <p style="margin: 5px 0;"><strong>Estimated Total:</strong> $${estimated_total}</p>
-                  <p style="margin: 5px 0; color: #22c55e;"><strong>Deposit to Secure Date:</strong> $${deposit}</p>
-                </div>
-
-                <p>
-                  Dates fill quickly — lock in your event below.
-                </p>
-
-                <div style="text-align: center; margin: 25px 0;">
-                  <a href="https://coloradotapandtoast.com/book?cid=${cid}"
-                     style="display: inline-block; background: linear-gradient(to right, #facc15, #eab308); color: #000; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px;">
-                    Complete Your Booking
-                  </a>
-                </div>
-
-                <p style="margin-top: 25px;">
-                  Have questions? Just reply — happy to help.
-                </p>
-
-                <p style="margin-top: 30px;">Cheers,</p>
-                <p style="margin: 0;">Tap & Toast 🍸</p>
-
-              </div>
-
-            </div>
-
-          </div>
-          `
-        })
-
-        console.log("📧 Delayed abandoned quote email sent")
-      } catch (error) {
-        console.error("❌ Delayed abandoned email error:", error)
-      } finally {
-        if (abandonedQuoteTimers.get(cid) === timer) {
-          abandonedQuoteTimers.delete(cid)
-        }
-      }
-    }, 15 * 60 * 1000) // 15 minutes delay
-
-    abandonedQuoteTimers.set(cid, timer)
-  } catch (error) {
-    console.error("❌ Abandoned quote email error:", error)
+    throw error
   }
 }

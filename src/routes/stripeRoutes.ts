@@ -83,36 +83,26 @@ router.post("/create-checkout-session", requireAdminForNonDeposit, async (req, r
 
     const { type } = req.body
 
+    if (type !== "deposit" && type !== "balance") {
+      return res.status(400).json({ error: "Invalid payment type" })
+    }
+
     const event = await getEvent(eventId)
 
     const isDeposit = type === "deposit"
 
-    let amount = isDeposit
+    const amount = isDeposit
       ? event.deposit_amount
       : event.balance_due
+    const amountCents = Math.round(Number(amount) * 100)
 
-    // 🔥 Fallback if amount missing (prevents $0 Stripe bug)
-    if (!amount || amount === 0) {
-      const total = Number(event.total_price || 0)
-      amount = total * 0.5
+    if (!isDeposit && Number(amount) === 0) {
+      return res.status(400).json({ error: "No balance due" })
     }
 
-    const hasValidStoredPricing =
-      Number.isFinite(Number(event.total_price)) && Number(event.total_price) > 0 &&
-      Number.isFinite(Number(event.deposit_amount)) && Number(event.deposit_amount) > 0 &&
-      Number.isFinite(Number(event.balance_due)) && Number(event.balance_due) >= 0
-    const testCheckoutToken = typeof req.body.test_token === "string"
-      ? req.body.test_token
-      : undefined
-    const configuredTestCheckoutToken = process.env.TAP_TOAST_TEST_CHECKOUT_TOKEN
-    // TEMPORARY E2E $1 CHECKOUT TEST — REMOVE AFTER PRODUCTION VALIDATION
-    const isOneDollarTestCheckout =
-      isDeposit &&
-      hasValidStoredPricing &&
-      process.env.TAP_TOAST_ALLOW_ONE_DOLLAR_TEST === "true" &&
-      Boolean(configuredTestCheckoutToken) &&
-      testCheckoutToken === configuredTestCheckoutToken
-    const stripeAmount = isOneDollarTestCheckout ? 1 : amount
+    if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
+      return res.status(400).json({ error: "Invalid payment amount" })
+    }
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -129,7 +119,7 @@ router.post("/create-checkout-session", requireAdminForNonDeposit, async (req, r
                 ? "Tap & Toast Event Deposit"
                 : "Tap & Toast Event Balance",
             },
-            unit_amount: Math.round((stripeAmount || 0) * 100),
+            unit_amount: amountCents,
           },
           quantity: 1,
         },
@@ -141,9 +131,9 @@ router.post("/create-checkout-session", requireAdminForNonDeposit, async (req, r
       metadata: {
         event_id: eventId,
         type,
+        expected_amount_cents: String(amountCents),
         ...(cid ? { cid } : {}),
         ...getMountainViewMetadata(event),
-        ...(isOneDollarTestCheckout ? { test_checkout: "one-dollar" } : {}),
       },
     })
 
@@ -164,6 +154,11 @@ router.post("/send-deposit", requireAdmin, async (req, res) => {
     const eventId = req.body.eventId || req.body.event_id
 
     const event = await getEvent(eventId)
+    const amountCents = Math.round(Number(event.deposit_amount) * 100)
+
+    if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
+      return res.status(400).json({ error: "Invalid deposit amount" })
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -174,6 +169,7 @@ router.post("/send-deposit", requireAdmin, async (req, res) => {
       metadata: {
         event_id: event.id,
         type: "deposit",
+        expected_amount_cents: String(amountCents),
         ...getMountainViewMetadata(event),
       },
 
@@ -184,7 +180,7 @@ router.post("/send-deposit", requireAdmin, async (req, res) => {
             product_data: {
               name: "Tap & Toast Event Deposit",
             },
-            unit_amount: Math.round((event.deposit_amount || 0) * 100),
+            unit_amount: amountCents,
           },
           quantity: 1,
         },
@@ -227,6 +223,15 @@ router.post("/send-balance", requireAdmin, async (req, res) => {
     const eventId = req.body.eventId || req.body.event_id
 
     const event = await getEvent(eventId)
+    const amountCents = Math.round(Number(event.balance_due) * 100)
+
+    if (Number(event.balance_due) === 0) {
+      return res.status(400).json({ error: "No balance due" })
+    }
+
+    if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
+      return res.status(400).json({ error: "Invalid balance amount" })
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -237,6 +242,7 @@ router.post("/send-balance", requireAdmin, async (req, res) => {
       metadata: {
         event_id: event.id,
         type: "balance",
+        expected_amount_cents: String(amountCents),
       },
 
       line_items: [
@@ -246,7 +252,7 @@ router.post("/send-balance", requireAdmin, async (req, res) => {
             product_data: {
               name: "Tap & Toast Event Balance",
             },
-            unit_amount: Math.round((event.balance_due || 0) * 100),
+            unit_amount: amountCents,
           },
           quantity: 1,
         },

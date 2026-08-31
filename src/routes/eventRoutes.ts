@@ -1,7 +1,11 @@
 import { Router } from "express"
 import { createClient } from "@supabase/supabase-js"
-import { sendAbandonedQuoteEmail } from "../services/emailService"
-import { calculateMountainViewPricing } from "../services/pricingService"
+import {
+  calculateMountainViewPricing,
+  calculateNormalBookingPricing,
+  NormalBookingMode,
+  NormalPricingTier,
+} from "../services/pricingService"
 import { requireAdmin } from "../middleware/auth"
 
 const router = Router()
@@ -21,18 +25,29 @@ type CreateEventPayload = {
   start_time: string
   hours: number
   bartenders: number
-  total_price?: number
-  custom_total_price?: number
-  estimated_total?: number
-  deposit_amount?: number
   venue?: string
   package_key?: string
   package_name?: string
   package_price?: number
   guests?: number
+  booking_mode?: NormalBookingMode
+  pricing_tier?: NormalPricingTier
+  rental_delivery_selected?: boolean
+  rental_ice_cooler_selected?: boolean
+  setup_hour_selected?: boolean
+  cocktail_tap_quantity?: number
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function isStringInRange(value: unknown, min: number, max: number): value is string {
+  return typeof value === "string" && value.trim().length >= min && value.trim().length <= max
+}
+
+function isIntegerInRange(value: unknown, min: number, max: number): boolean {
+  return Number.isInteger(value) && Number(value) >= min && Number(value) <= max
+}
 
 function parseCreateEvent(body: any): CreateEventPayload | null {
   if (!body) return null
@@ -51,15 +66,17 @@ function parseCreateEvent(body: any): CreateEventPayload | null {
     start_time: String(body.start_time),
     hours: Number(body.hours || 0),
     bartenders: Number(body.bartenders || 0),
-    total_price: body.total_price ? Number(body.total_price) : undefined,
-    custom_total_price: body.custom_total_price ? Number(body.custom_total_price) : undefined,
-    estimated_total: body.estimated_total ? Number(body.estimated_total) : undefined,
-    deposit_amount: body.deposit_amount ? Number(body.deposit_amount) : undefined,
     venue: body.venue ? String(body.venue) : undefined,
     package_key: body.package_key ? String(body.package_key) : undefined,
     package_name: body.package_name ? String(body.package_name) : undefined,
     package_price: body.package_price ? Number(body.package_price) : undefined,
     guests: body.guests !== undefined ? Number(body.guests) : undefined,
+    booking_mode: body.booking_mode,
+    pricing_tier: body.pricing_tier,
+    rental_delivery_selected: body.rental_delivery_selected,
+    rental_ice_cooler_selected: body.rental_ice_cooler_selected,
+    setup_hour_selected: body.setup_hour_selected,
+    cocktail_tap_quantity: Number(body.cocktail_tap_quantity),
   }
 }
 
@@ -92,6 +109,22 @@ router.post("/create", async (req, res) => {
       }
     }
 
+    const normalPricing = isMountainView ? null : calculateNormalBookingPricing({
+      bookingMode: parsed.booking_mode as NormalBookingMode,
+      pricingTier: parsed.pricing_tier as NormalPricingTier,
+      hours: parsed.hours,
+      bartenders: parsed.bartenders,
+      guests: Number(parsed.guests),
+      rentalDeliverySelected: parsed.rental_delivery_selected as boolean,
+      rentalIceCoolerSelected: parsed.rental_ice_cooler_selected as boolean,
+      setupHourSelected: parsed.setup_hour_selected as boolean,
+      cocktailTapQuantity: Number(parsed.cocktail_tap_quantity),
+    })
+
+    if (!isMountainView && !normalPricing) {
+      return res.status(400).json({ error: "Invalid normal pricing selections" })
+    }
+
     // 🔥 Create or fetch customer
     const { data: customer, error: customerError } = await supabase
       .from("customers")
@@ -108,26 +141,11 @@ router.post("/create", async (req, res) => {
 
     if (customerError) throw customerError
 
-    // 🔥 SAFE PRICING CALCULATION (with custom override)
-    const hours = mountainViewPricing?.serviceHours ?? Number(parsed.hours || 0)
-    const bartenders = mountainViewPricing?.bartendersNeeded ?? Number(parsed.bartenders || 0)
-    const base = 600
-    const staffing = bartenders * hours * 40
-
-    const customTotal = Number(parsed.custom_total_price || 0)
-    const estimatedTotal = Number(parsed.estimated_total || 0)
-
-    const normalBookingTotal = customTotal > 0
-      ? customTotal
-      : estimatedTotal > 0
-        ? estimatedTotal
-        : Number(parsed.total_price) > 0
-          ? Number(parsed.total_price)
-          : base + staffing
-
-    const safeTotal = mountainViewPricing?.totalPrice ?? normalBookingTotal
-    const deposit = mountainViewPricing?.depositAmount ?? safeTotal * 0.5
-    const balance = mountainViewPricing?.balanceDue ?? safeTotal - deposit
+    const hours = mountainViewPricing?.serviceHours ?? normalPricing!.hours
+    const bartenders = mountainViewPricing?.bartendersNeeded ?? normalPricing!.bartenders
+    const safeTotal = mountainViewPricing?.totalPrice ?? normalPricing!.totalPrice
+    const deposit = mountainViewPricing?.depositAmount ?? normalPricing!.depositAmount
+    const balance = mountainViewPricing?.balanceDue ?? normalPricing!.balanceDue
 
     const eventData = {
       customer_id: customer.id,
@@ -146,11 +164,22 @@ router.post("/create", async (req, res) => {
             package_name: mountainViewPricing.packageName
           }
         : {}),
+      ...(!isMountainView && normalPricing
+        ? {
+            pricing_version: normalPricing.pricingVersion,
+            booking_mode: normalPricing.bookingMode,
+            pricing_tier: normalPricing.pricingTier,
+            rental_delivery_selected: normalPricing.rentalDeliverySelected,
+            rental_ice_cooler_selected: normalPricing.rentalIceCoolerSelected,
+            setup_hour_selected: normalPricing.setupHourSelected,
+            cocktail_tap_quantity: normalPricing.cocktailTapQuantity,
+          }
+        : {}),
 
       base_price: 600,
-      bartender_rate: 25,
+      bartender_rate: mountainViewPricing ? 25 : normalPricing!.bartenderRate,
 
-      custom_total_price: isMountainView ? null : customTotal > 0 ? customTotal : null,
+      custom_total_price: null,
       total_price: safeTotal,
       deposit_amount: deposit,
       balance_due: balance,
@@ -565,13 +594,33 @@ router.post("/save-quote", async (req, res) => {
       return res.status(400).json({ error: "Invalid cid" })
     }
 
-    if (!name || !email || !event_date) {
-      return res.status(400).json({ error: "Missing required fields" })
+    const hasValue = (value: unknown) => value !== undefined && value !== null && value !== ""
+    const validUpgrades = upgrades === undefined || (
+      Array.isArray(upgrades) && upgrades.length <= 20 &&
+      upgrades.every((value) => isStringInRange(value, 1, 50))
+    )
+    const validPayload =
+      isStringInRange(name, 1, 100) &&
+      isStringInRange(email, 3, 254) && EMAIL_PATTERN.test(email) &&
+      (phone === undefined || phone === null || isStringInRange(phone, 0, 30)) &&
+      (!hasValue(location) || isStringInRange(location, 1, 300)) &&
+      typeof event_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(event_date) &&
+      (!hasValue(start_time) || (typeof start_time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(start_time))) &&
+      (!hasValue(hours) || isIntegerInRange(hours, 1, 10)) &&
+      (!hasValue(guests) || isIntegerInRange(guests, 1, 300)) &&
+      (!hasValue(bartenders) || isIntegerInRange(bartenders, 0, 5)) &&
+      (!hasValue(event_type) || isStringInRange(event_type, 1, 100)) &&
+      validUpgrades &&
+      (!hasValue(estimated_total) || (Number.isFinite(estimated_total) && estimated_total >= 0 && estimated_total <= 1000000)) &&
+      (!hasValue(deposit) || (Number.isFinite(deposit) && deposit >= 0 && deposit <= 1000000))
+
+    if (!validPayload) {
+      return res.status(400).json({ error: "Invalid quote payload" })
     }
 
     const { data: existingQuote, error: lookupError } = await supabase
       .from("quotes")
-      .select("status, converted")
+      .select("status, converted, email")
       .eq("cid", cid)
       .maybeSingle()
 
@@ -584,6 +633,10 @@ router.post("/save-quote", async (req, res) => {
       return res.json({ success: true, cid, converted: true })
     }
 
+    if (existingQuote?.email && existingQuote.email.toLowerCase() !== email.toLowerCase()) {
+      return res.status(409).json({ error: "Quote email cannot be changed" })
+    }
+
     const { data, error } = await supabase
       .from("quotes")
       .upsert([
@@ -591,17 +644,17 @@ router.post("/save-quote", async (req, res) => {
           cid,
           name,
           email,
-          phone,
-          location,
           event_date,
-          start_time,
-          hours,
-          guests,
-          bartenders,
-          event_type,
-          upgrades,
-          estimated_total,
-          deposit,
+          ...(hasValue(phone) ? { phone } : {}),
+          ...(hasValue(location) ? { location } : {}),
+          ...(hasValue(start_time) ? { start_time } : {}),
+          ...(hasValue(hours) ? { hours } : {}),
+          ...(hasValue(guests) ? { guests } : {}),
+          ...(hasValue(bartenders) ? { bartenders } : {}),
+          ...(hasValue(event_type) ? { event_type } : {}),
+          ...(upgrades !== undefined ? { upgrades } : {}),
+          ...(hasValue(estimated_total) ? { estimated_total } : {}),
+          ...(hasValue(deposit) ? { deposit } : {}),
           updated_at: new Date().toISOString()
         }
       ], { onConflict: "cid" })
@@ -624,22 +677,6 @@ router.post("/save-quote", async (req, res) => {
     }
 
     console.log("💾 QUOTE SAVED:", data?.[0]?.id)
-
-    // 🔥 Send abandoned quote email
-    try {
-      await sendAbandonedQuoteEmail({
-        cid,
-        name,
-        email,
-        event_date,
-        location,
-        estimated_total,
-        deposit
-      })
-      console.log("📧 Abandoned quote email sent")
-    } catch (emailErr) {
-      console.error("❌ Abandoned quote email failed (non-blocking):", emailErr)
-    }
 
     return res.json({ success: true, cid })
 

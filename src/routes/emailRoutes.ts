@@ -1,9 +1,18 @@
 import express from "express"
+import Stripe from "stripe"
 import { supabase } from "../lib/supabase"
 import { sendEmail } from "../lib/email"
+import { sendBalancePaymentEmail } from "../services/emailService"
 import { requireAdmin } from "../middleware/auth"
 
 const router = express.Router()
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+  apiVersion: "2026-02-25.clover",
+})
+const BASE_URL =
+  process.env.FRONTEND_URL && process.env.FRONTEND_URL.startsWith("http")
+    ? process.env.FRONTEND_URL
+    : "https://www.coloradotapandtoast.com"
 
 router.post("/reminder", requireAdmin, async (req, res) => {
   try {
@@ -21,8 +30,12 @@ router.post("/reminder", requireAdmin, async (req, res) => {
       .select(`
         id,
         event_date,
+        location,
+        start_time,
+        hours,
         deposit_amount,
         balance_due,
+        balance_paid,
         customers (
           name,
           email
@@ -31,9 +44,8 @@ router.post("/reminder", requireAdmin, async (req, res) => {
       .eq("id", eventId)
       .single()
 
-    console.log("📦 EVENT FETCH RESULT:", event, error)
-
     if (error || !event) {
+      console.error("Reminder event lookup failed", { eventId })
       return res.status(404).json({ error: "Event not found" })
     }
 
@@ -43,6 +55,60 @@ router.post("/reminder", requireAdmin, async (req, res) => {
 
     if (!customer?.email) {
       return res.status(400).json({ error: "Customer email missing" })
+    }
+
+    if (type === "balance_reminder") {
+      const balance = Number(event.balance_due)
+
+      if (event.balance_paid === true || balance === 0) {
+        return res.status(400).json({ error: "No balance due" })
+      }
+
+      if (!Number.isFinite(balance) || balance < 0) {
+        return res.status(400).json({ error: "Invalid balance amount" })
+      }
+
+      const amountCents = Math.round(balance * 100)
+      if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
+        return res.status(400).json({ error: "Invalid balance amount" })
+      }
+      const idempotencyKey = `manual-balance-reminder-${event.id}-${amountCents}`
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        mode: "payment",
+        customer_email: customer.email,
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: {
+                name: "Tap & Toast Event Balance",
+              },
+              unit_amount: amountCents,
+            },
+            quantity: 1,
+          },
+        ],
+        metadata: {
+          event_id: event.id,
+          type: "balance",
+          expected_amount_cents: String(amountCents),
+        },
+        success_url: `${BASE_URL}/success?event_id=${encodeURIComponent(event.id)}&payment_type=balance`,
+        cancel_url: `${BASE_URL}/book`,
+      }, { idempotencyKey })
+
+      if (!session.url) {
+        throw new Error(`Stripe did not return a Checkout URL for event ${event.id}`)
+      }
+
+      await sendBalancePaymentEmail(
+        { ...event, customer },
+        session.url,
+        `manual-balance-reminder-email-${event.id}-${amountCents}`
+      )
+      return res.json({ success: true })
     }
 
     const eventDate = new Date(event.event_date).toLocaleDateString()
@@ -65,26 +131,9 @@ router.post("/reminder", requireAdmin, async (req, res) => {
 
         <p>— Colorado Tap & Toast</p>
       `
-    } else if (type === "balance_reminder") {
-      subject = "Reminder: Final Payment Due"
-
-      html = `
-        <p>Hi ${customer.name},</p>
-
-        <p>Your event is coming up soon!</p>
-
-        <p><strong>Event:</strong> ${eventDate}</p>
-        <p><strong>Remaining Balance:</strong> $${event.balance_due}</p>
-
-        <p>Please complete your final payment prior to your event.</p>
-
-        <p>— Colorado Tap & Toast</p>
-      `
     } else {
       return res.status(400).json({ error: "Invalid reminder type" })
     }
-
-    console.log("📨 SENDING EMAIL TO:", customer.email)
 
     await sendEmail({
       to: customer.email,
@@ -92,7 +141,7 @@ router.post("/reminder", requireAdmin, async (req, res) => {
       html,
     })
 
-    console.log("✅ EMAIL SENT SUCCESSFULLY")
+    console.log("Reminder email sent", { eventId, type })
 
     return res.json({ success: true })
 
