@@ -1,6 +1,8 @@
 import { Resend } from "resend"
+import { supabase } from "../lib/supabase"
 
 const resend = new Resend(process.env.RESEND_API_KEY as string)
+const abandonedQuoteTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const INTERNAL_EMAILS = [
   "jen@coloradotapandtoast.com",
   "waynesummers12@gmail.com"
@@ -484,6 +486,7 @@ export async function send15DayReminderEmail(event: any, paymentUrl?: string) {
 }
 
 export async function sendAbandonedQuoteEmail({
+  cid,
   name,
   email,
   event_date,
@@ -491,6 +494,7 @@ export async function sendAbandonedQuoteEmail({
   estimated_total,
   deposit
 }: {
+  cid: string
   name: string
   email: string
   event_date: string
@@ -501,8 +505,22 @@ export async function sendAbandonedQuoteEmail({
   try {
     const eventDate = new Date(event_date).toLocaleDateString()
 
-    setTimeout(async () => {
+    const existingTimer = abandonedQuoteTimers.get(cid)
+    if (existingTimer) clearTimeout(existingTimer)
+
+    const timer = setTimeout(async () => {
       try {
+        const { data: quote, error } = await supabase
+          .from("quotes")
+          .select("converted, status")
+          .eq("cid", cid)
+          .maybeSingle()
+
+        if (error || !quote || quote.converted === true || quote.status === "converted") {
+          if (error) console.error("❌ Abandoned quote conversion check failed")
+          return
+        }
+
         await resend.emails.send({
           from: "Tap & Toast <jen@coloradotapandtoast.com>",
           to: email,
@@ -541,7 +559,7 @@ export async function sendAbandonedQuoteEmail({
                 </p>
 
                 <div style="text-align: center; margin: 25px 0;">
-                  <a href="https://coloradotapandtoast.com/book" 
+                  <a href="https://coloradotapandtoast.com/book?cid=${cid}"
                      style="display: inline-block; background: linear-gradient(to right, #facc15, #eab308); color: #000; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px;">
                     Complete Your Booking
                   </a>
@@ -565,8 +583,14 @@ export async function sendAbandonedQuoteEmail({
         console.log("📧 Delayed abandoned quote email sent")
       } catch (error) {
         console.error("❌ Delayed abandoned email error:", error)
+      } finally {
+        if (abandonedQuoteTimers.get(cid) === timer) {
+          abandonedQuoteTimers.delete(cid)
+        }
       }
     }, 15 * 60 * 1000) // 15 minutes delay
+
+    abandonedQuoteTimers.set(cid, timer)
   } catch (error) {
     console.error("❌ Abandoned quote email error:", error)
   }

@@ -18,6 +18,25 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY as string
 )
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+async function markQuoteConverted(cid?: string | null) {
+  if (!cid || !UUID_PATTERN.test(cid)) return
+
+  const { error } = await supabase
+    .from("quotes")
+    .update({
+      converted: true,
+      converted_at: new Date().toISOString(),
+      status: "converted",
+    })
+    .eq("cid", cid)
+
+  if (error) {
+    console.error("❌ Quote conversion update failed")
+  }
+}
+
 router.post("/", async (req, res) => {
   try {
     // 🔥 Ensure raw buffer
@@ -42,6 +61,7 @@ router.post("/", async (req, res) => {
 
       const eventId = session.metadata?.event_id
       const paymentType = session.metadata?.type || "deposit"
+      const cid = session.metadata?.cid
       const stripeSessionId = session.id
       const amount = (session.amount_total || 0) / 100
 
@@ -61,6 +81,7 @@ router.post("/", async (req, res) => {
 
       if (existingPayment) {
         console.log("⚠️ Webhook already processed:", stripeSessionId)
+        if (paymentType === "deposit") await markQuoteConverted(cid)
         return res.json({ received: true })
       }
 
@@ -95,6 +116,8 @@ router.post("/", async (req, res) => {
         if (updateError) {
           console.error("❌ Event update failed:", updateError)
         }
+
+        await markQuoteConverted(cid)
 
         const { data: eventData } = await supabase
           .from("events")

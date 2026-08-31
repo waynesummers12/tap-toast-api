@@ -15,6 +15,8 @@ const BASE_URL =
     ? process.env.FRONTEND_URL
     : "https://www.coloradotapandtoast.com"
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
 // Helper to fetch event
 const getEvent = async (eventId: string) => {
   const { data: event, error } = await supabase
@@ -42,9 +44,14 @@ const getEvent = async (eventId: string) => {
 router.post("/create-checkout-session", async (req, res) => {
   try {
     const eventId = req.body.eventId || req.body.event_id
+    const cid = req.body.cid ? String(req.body.cid) : undefined
 
     if (!eventId) {
       return res.status(400).json({ error: "Missing eventId" })
+    }
+
+    if (cid && !UUID_PATTERN.test(cid)) {
+      return res.status(400).json({ error: "Invalid cid" })
     }
 
     const { type } = req.body
@@ -90,6 +97,7 @@ router.post("/create-checkout-session", async (req, res) => {
       metadata: {
         event_id: eventId,
         type,
+        ...(cid ? { cid } : {}),
       },
     })
 

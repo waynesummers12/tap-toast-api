@@ -11,6 +11,7 @@ const supabase = createClient(
 )
 
 type CreateEventPayload = {
+  cid?: string
   name: string
   email: string
   phone?: string
@@ -30,13 +31,17 @@ type CreateEventPayload = {
   guests?: number
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
 function parseCreateEvent(body: any): CreateEventPayload | null {
   if (!body) return null
   const required = ["name","email","event_date","location","start_time"]
   for (const k of required) {
     if (!body[k]) return null
   }
+  if (body.cid && !UUID_PATTERN.test(String(body.cid))) return null
   return {
+    cid: body.cid ? String(body.cid) : undefined,
     name: String(body.name),
     email: String(body.email),
     phone: body.phone ? String(body.phone) : undefined,
@@ -175,7 +180,7 @@ router.post("/create", async (req, res) => {
 
     console.log("📦 EVENT CREATED:", event.id)
 
-    res.json({ success: true, event })
+    res.json({ success: true, event, cid: parsed.cid })
 
   } catch (err) {
     console.error("Create event error:", err)
@@ -486,6 +491,7 @@ router.post("/assign-bartenders", async (req, res) => {
 router.post("/save-quote", async (req, res) => {
   try {
     const {
+      cid,
       name,
       email,
       phone,
@@ -501,14 +507,34 @@ router.post("/save-quote", async (req, res) => {
       deposit
     } = req.body
 
+    if (!cid || !UUID_PATTERN.test(String(cid))) {
+      return res.status(400).json({ error: "Invalid cid" })
+    }
+
     if (!name || !email || !event_date) {
       return res.status(400).json({ error: "Missing required fields" })
     }
 
+    const { data: existingQuote, error: lookupError } = await supabase
+      .from("quotes")
+      .select("status, converted")
+      .eq("cid", cid)
+      .maybeSingle()
+
+    if (lookupError) {
+      console.error("❌ Quote lookup failed")
+      return res.status(500).json({ error: "Failed to save quote" })
+    }
+
+    if (existingQuote?.converted === true || existingQuote?.status === "converted") {
+      return res.json({ success: true, cid, converted: true })
+    }
+
     const { data, error } = await supabase
       .from("quotes")
-      .insert([
+      .upsert([
         {
+          cid,
           name,
           email,
           phone,
@@ -522,13 +548,24 @@ router.post("/save-quote", async (req, res) => {
           upgrades,
           estimated_total,
           deposit,
-          status: "pending"
+          updated_at: new Date().toISOString()
         }
-      ])
+      ], { onConflict: "cid" })
       .select()
 
     if (error) {
       console.error("❌ Quote save error:", error)
+      return res.status(500).json({ error: "Failed to save quote" })
+    }
+
+    const { error: statusError } = await supabase
+      .from("quotes")
+      .update({ status: "pending" })
+      .eq("cid", cid)
+      .or("converted.is.null,converted.eq.false")
+
+    if (statusError) {
+      console.error("❌ Quote status update failed")
       return res.status(500).json({ error: "Failed to save quote" })
     }
 
@@ -537,6 +574,7 @@ router.post("/save-quote", async (req, res) => {
     // 🔥 Send abandoned quote email
     try {
       await sendAbandonedQuoteEmail({
+        cid,
         name,
         email,
         event_date,
@@ -549,7 +587,7 @@ router.post("/save-quote", async (req, res) => {
       console.error("❌ Abandoned quote email failed (non-blocking):", emailErr)
     }
 
-    return res.json({ success: true })
+    return res.json({ success: true, cid })
 
   } catch (err) {
     console.error("❌ Save quote crash:", err)
