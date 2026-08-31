@@ -237,10 +237,10 @@ export async function sendBookingConfirmation(event: any) {
   }
 }
 
-export async function sendInternalNotification(event: any) {
+export async function sendInternalNotification(event: any, idempotencyKey?: string) {
   try {
     const mountainViewPackageName = getMountainViewPackageName(event)
-    await resend.emails.send({
+    const result = await resend.emails.send({
       from: "Tap & Toast Alerts <jen@coloradotapandtoast.com>",
       to: ["jen@coloradotapandtoast.com", "waynesummers12@gmail.com"],
       subject: mountainViewPackageName
@@ -267,11 +267,14 @@ export async function sendInternalNotification(event: any) {
           <p><strong>Upgrades Total:</strong> $${calculateUpgradesTotal(event.upgrades)}</p>
         ` : ''}
       `,
-    })
+    }, { idempotencyKey })
+
+    if (result.error) throw new Error(result.error.message)
 
     console.log("Internal notification email sent")
   } catch (error) {
     console.error("Internal email error:", error)
+    throw error
   }
 }
 export async function sendBalancePaymentEmail(event: any, paymentUrl: string) {
@@ -343,16 +346,19 @@ export async function sendBalancePaymentEmail(event: any, paymentUrl: string) {
     console.error("Balance email error:", error)
   }
 }
-export async function sendPaymentReceivedEmail(event: any, type: "deposit" | "balance") {
+export async function sendPaymentReceivedEmail(
+  event: any,
+  type: "deposit" | "balance",
+  idempotencyKey?: string
+) {
   try {
     console.log("📨 Sending payment received email:", type, event.id)
     const mountainViewPackageName = getMountainViewPackageName(event)
     const recipient = getRecipient(event)
     if (!recipient) {
-      console.error("❌ No email found for event:", event)
-      return
+      throw new Error(`No customer email found for event ${event.id}`)
     }
-    await resend.emails.send({
+    const result = await resend.emails.send({
       from: "Tap & Toast <jen@coloradotapandtoast.com>",
       to: recipient,
       bcc: INTERNAL_EMAILS,
@@ -428,11 +434,14 @@ export async function sendPaymentReceivedEmail(event: any, type: "deposit" | "ba
 
       </div>
       `
-    })
+    }, { idempotencyKey })
+
+    if (result.error) throw new Error(result.error.message)
 
     console.log("Payment confirmation email sent")
   } catch (error) {
     console.error("Payment confirmation email error:", error)
+    throw error
   }
 }
 export async function send15DayReminderEmail(event: any, paymentUrl?: string) {

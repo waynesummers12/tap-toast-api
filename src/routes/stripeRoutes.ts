@@ -29,6 +29,20 @@ function getMountainViewMetadata(event: any): Record<string, string> {
   }
 }
 
+function getBookingCancelUrl(event: any, cid?: string): string {
+  const params = new URLSearchParams()
+  if (cid) params.set("cid", cid)
+
+  const mountainViewMetadata = getMountainViewMetadata(event)
+  if (mountainViewMetadata.venue && mountainViewMetadata.package_key) {
+    params.set("venue", mountainViewMetadata.venue)
+    params.set("package", mountainViewMetadata.package_key)
+  }
+
+  const query = params.toString()
+  return `${BASE_URL}/book${query ? `?${query}` : ""}`
+}
+
 // Helper to fetch event
 const getEvent = async (eventId: string) => {
   const { data: event, error } = await supabase
@@ -103,8 +117,8 @@ router.post("/create-checkout-session", async (req, res) => {
         },
       ],
 
-      success_url: `${BASE_URL}/success?event_id=${encodeURIComponent(eventId)}`,
-      cancel_url: `${BASE_URL}/book`,
+      success_url: `${BASE_URL}/success?event_id=${encodeURIComponent(eventId)}&payment_type=${isDeposit ? "deposit" : "balance"}`,
+      cancel_url: getBookingCancelUrl(event, cid),
 
       metadata: {
         event_id: eventId,
@@ -157,7 +171,7 @@ router.post("/send-deposit", async (req, res) => {
         },
       ],
 
-      success_url: `${BASE_URL}/success?event_id=${encodeURIComponent(event.id)}`,
+      success_url: `${BASE_URL}/success?event_id=${encodeURIComponent(event.id)}&payment_type=deposit`,
       cancel_url: `${BASE_URL}/book`,
     })
 
@@ -219,7 +233,7 @@ router.post("/send-balance", async (req, res) => {
         },
       ],
 
-      success_url: `${BASE_URL}/success?event_id=${encodeURIComponent(event.id)}`,
+      success_url: `${BASE_URL}/success?event_id=${encodeURIComponent(event.id)}&payment_type=balance`,
       cancel_url: `${BASE_URL}/book`,
     })
 

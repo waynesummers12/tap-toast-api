@@ -25,6 +25,7 @@ export type MountainViewPricingResult = {
   venue: "mountain-view"
   packageKey: "classic" | "signature"
   packageName: "Classic" | "Signature"
+  serviceHours: 5
   packagePrice: number
   staffingFee: number
   bartendersNeeded: number
@@ -60,6 +61,7 @@ export function calculateMountainViewPricing(
     venue: "mountain-view",
     packageKey,
     packageName: selectedPackage.name,
+    serviceHours: 5,
     packagePrice: selectedPackage.price,
     staffingFee,
     bartendersNeeded,

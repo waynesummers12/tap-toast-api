@@ -75,7 +75,7 @@ export const runPaymentReminders = async () => {
             event_id: event.id,
             type: "balance",
           },
-          success_url: `${process.env.FRONTEND_URL}/success?event_id=${event.id}`,
+          success_url: `${process.env.FRONTEND_URL}/success?event_id=${event.id}&payment_type=balance`,
           cancel_url: `${process.env.FRONTEND_URL}/dashboard`,
         })
 

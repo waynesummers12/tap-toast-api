@@ -34,7 +34,78 @@ async function markQuoteConverted(cid?: string | null) {
 
   if (error) {
     console.error("❌ Quote conversion update failed")
+    throw error
   }
+}
+
+type PaymentRecord = {
+  id: string
+  customer_email_sent_at: string | null
+  internal_notification_sent_at: string | null
+}
+
+async function getOrCreatePayment(input: {
+  eventId: string
+  amount: number
+  paymentType: string
+  stripeSessionId: string
+}): Promise<{ payment: PaymentRecord; inserted: boolean }> {
+  const paymentFields = "id, customer_email_sent_at, internal_notification_sent_at"
+  const { data: existingPayment, error: lookupError } = await supabase
+    .from("payments")
+    .select(paymentFields)
+    .eq("stripe_session_id", input.stripeSessionId)
+    .maybeSingle()
+
+  if (lookupError) throw lookupError
+  if (existingPayment) {
+    return { payment: existingPayment, inserted: false }
+  }
+
+  const { data: insertedPayment, error: insertError } = await supabase
+    .from("payments")
+    .insert({
+      event_id: input.eventId,
+      amount: input.amount,
+      type: input.paymentType,
+      status: "completed",
+      stripe_session_id: input.stripeSessionId,
+    })
+    .select(paymentFields)
+    .single()
+
+  if (!insertError && insertedPayment) {
+    return { payment: insertedPayment, inserted: true }
+  }
+
+  if (insertError?.code !== "23505") throw insertError
+
+  const { data: concurrentlyInsertedPayment, error: concurrentLookupError } = await supabase
+    .from("payments")
+    .select(paymentFields)
+    .eq("stripe_session_id", input.stripeSessionId)
+    .single()
+
+  if (concurrentLookupError) throw concurrentLookupError
+  return {
+    payment: concurrentlyInsertedPayment,
+    inserted: false,
+  }
+}
+
+async function markNotificationSent(
+  paymentId: string,
+  column: "customer_email_sent_at" | "internal_notification_sent_at"
+) {
+  const { error } = await supabase
+    .from("payments")
+    .update({ [column]: new Date().toISOString() })
+    .eq("id", paymentId)
+    .is(column, null)
+    .select("id")
+    .single()
+
+  if (error) throw error
 }
 
 router.post("/", async (req, res) => {
@@ -57,7 +128,7 @@ router.post("/", async (req, res) => {
       const session = event.data.object as Stripe.Checkout.Session
 
       console.log("🔥 Webhook received: checkout.session.completed")
-      console.log("📦 STRIPE SESSION:", JSON.stringify(session, null, 2))
+      console.log("📦 Stripe checkout session received")
 
       const eventId = session.metadata?.event_id
       const paymentType = session.metadata?.type || "deposit"
@@ -72,48 +143,15 @@ router.post("/", async (req, res) => {
 
       console.log(`💰 Payment received (${paymentType}) for event:`, eventId)
 
-      // 🔁 Prevent duplicate processing
-      const { data: existingPayment } = await supabase
-        .from("payments")
-        .select("id")
-        .eq("stripe_session_id", stripeSessionId)
-        .maybeSingle()
+      const paymentResult = await getOrCreatePayment({
+        eventId,
+        amount,
+        paymentType,
+        stripeSessionId,
+      })
+      const { payment } = paymentResult
 
-      if (existingPayment) {
-        console.log("⚠️ Webhook already processed:", stripeSessionId)
-        if (paymentType === "deposit") await markQuoteConverted(cid)
-        return res.json({ received: true })
-      }
-
-      // ✅ Save payment
-      const { error: paymentError } = await supabase
-        .from("payments")
-        .insert({
-          event_id: eventId,
-          amount,
-          type: paymentType,
-          status: "completed",
-          stripe_session_id: stripeSessionId,
-        })
-
-      if (paymentError) {
-        console.error("❌ Payment insert failed:", paymentError)
-        const { data: concurrentlyProcessedPayment } = await supabase
-          .from("payments")
-          .select("id")
-          .eq("stripe_session_id", stripeSessionId)
-          .maybeSingle()
-
-        if (concurrentlyProcessedPayment) {
-          console.log("⚠️ Webhook concurrently processed:", stripeSessionId)
-          if (paymentType === "deposit") await markQuoteConverted(cid)
-          return res.json({ received: true })
-        }
-
-        throw paymentError
-      }
-
-      console.log("✅ Payment saved")
+      console.log(paymentResult.inserted ? "✅ Payment saved" : "♻️ Reusing payment")
 
       // 🔄 UPDATE EVENT (deposit)
       if (paymentType === "deposit") {
@@ -125,43 +163,12 @@ router.post("/", async (req, res) => {
             stripe_session_id: stripeSessionId,
           })
           .eq("id", eventId)
-
-        if (updateError) {
-          console.error("❌ Event update failed:", updateError)
-        }
-
-        await markQuoteConverted(cid)
-
-        const { data: eventData } = await supabase
-          .from("events")
-          .select(
-            `
-            *,
-            customer:customers (
-              id,
-              name,
-              email,
-              phone
-            )
-          `
-          )
-          .eq("id", eventId)
+          .select("id")
           .single()
 
-        if (eventData) {
-          try {
-            console.log("📧 Sending deposit emails...")
-            await sendInternalNotification(eventData)
-            await createCalendarEvent(eventData)
-            await sendPaymentReceivedEmail(
-              { ...eventData, payment_amount: amount },
-              "deposit"
-            )
-            console.log("✅ Deposit flow completed")
-          } catch (err) {
-            console.error("❌ Post-deposit tasks failed:", err)
-          }
-        }
+        if (updateError) throw updateError
+
+        await markQuoteConverted(cid)
       }
 
       // 🔄 UPDATE EVENT (balance)
@@ -175,12 +182,14 @@ router.post("/", async (req, res) => {
             event_status: "confirmed",
           })
           .eq("id", eventId)
+          .select("id")
+          .single()
 
-        if (updateError) {
-          console.error("❌ Balance update failed:", updateError)
-        }
+        if (updateError) throw updateError
+      }
 
-        const { data: eventData } = await supabase
+      if (paymentType === "deposit" || paymentType === "balance") {
+        const { data: eventData, error: eventError } = await supabase
           .from("events")
           .select(
             `
@@ -196,19 +205,44 @@ router.post("/", async (req, res) => {
           .eq("id", eventId)
           .single()
 
-        if (eventData) {
+        if (eventError) throw eventError
+
+        if (paymentResult.inserted && paymentType === "deposit") {
+          await createCalendarEvent(eventData)
+        }
+
+        const notificationErrors: unknown[] = []
+
+        if (!payment.internal_notification_sent_at) {
           try {
-            console.log("📧 Sending balance emails...")
-            await sendInternalNotification(eventData)
-            await sendPaymentReceivedEmail(
-              { ...eventData, payment_amount: amount },
-              "balance"
+            await sendInternalNotification(
+              eventData,
+              `stripe-${stripeSessionId}-${paymentType}-internal`
             )
-            console.log("✅ Balance flow completed")
-          } catch (err) {
-            console.error("❌ Post-balance tasks failed:", err)
+            await markNotificationSent(payment.id, "internal_notification_sent_at")
+          } catch (error) {
+            notificationErrors.push(error)
           }
         }
+
+        if (!payment.customer_email_sent_at) {
+          try {
+            await sendPaymentReceivedEmail(
+              { ...eventData, payment_amount: amount },
+              paymentType,
+              `stripe-${stripeSessionId}-${paymentType}-customer`
+            )
+            await markNotificationSent(payment.id, "customer_email_sent_at")
+          } catch (error) {
+            notificationErrors.push(error)
+          }
+        }
+
+        if (notificationErrors.length > 0) {
+          throw notificationErrors[0]
+        }
+
+        console.log(`✅ ${paymentType} flow completed`)
       }
 
       // 🚀 Upgrade placeholder

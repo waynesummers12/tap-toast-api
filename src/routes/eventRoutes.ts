@@ -108,7 +108,7 @@ router.post("/create", async (req, res) => {
     if (customerError) throw customerError
 
     // 🔥 SAFE PRICING CALCULATION (with custom override)
-    const hours = Number(parsed.hours || 0)
+    const hours = mountainViewPricing?.serviceHours ?? Number(parsed.hours || 0)
     const bartenders = mountainViewPricing?.bartendersNeeded ?? Number(parsed.bartenders || 0)
     const base = 600
     const staffing = bartenders * hours * 40
@@ -309,6 +309,51 @@ router.get("/booked-slots", async (req, res) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: "Failed to fetch booked slots" })
+  }
+})
+
+router.get("/:eventId/payment-status", async (req, res) => {
+  try {
+    const { eventId } = req.params
+    const paymentType = req.query.type === "balance" ? "balance" : "deposit"
+    if (!UUID_PATTERN.test(eventId)) {
+      return res.status(400).json({ success: false, error: "Invalid event id" })
+    }
+
+    const { data: event, error: eventError } = await supabase
+      .from("events")
+      .select("id, deposit_paid, balance_paid, event_status")
+      .eq("id", eventId)
+      .maybeSingle()
+
+    if (eventError) throw eventError
+    if (!event) {
+      return res.status(404).json({ success: false, deposit_confirmed: false })
+    }
+
+    const { data: payment, error: paymentError } = await supabase
+      .from("payments")
+      .select("id")
+      .eq("event_id", eventId)
+      .eq("type", paymentType)
+      .eq("status", "completed")
+      .limit(1)
+      .maybeSingle()
+
+    if (paymentError) throw paymentError
+
+    const eventPaymentConfirmed = paymentType === "deposit"
+      ? event.deposit_paid === true
+      : event.balance_paid === true
+    const paymentConfirmed =
+      eventPaymentConfirmed &&
+      event.event_status === "confirmed" &&
+      Boolean(payment)
+
+    return res.json({ success: true, payment_confirmed: paymentConfirmed })
+  } catch (err) {
+    console.error("Payment status error:", err)
+    return res.status(500).json({ success: false, error: "Failed to verify payment" })
   }
 })
 
