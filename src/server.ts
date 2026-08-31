@@ -1,6 +1,5 @@
 import dotenv from "dotenv"
 dotenv.config()
-console.log("🔑 STRIPE KEY IN USE:", process.env.STRIPE_SECRET_KEY)
 
 import express from "express"
 import cors from "cors"
