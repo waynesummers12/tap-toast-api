@@ -96,6 +96,23 @@ router.post("/create-checkout-session", async (req, res) => {
       amount = total * 0.5
     }
 
+    const hasValidStoredPricing =
+      Number.isFinite(Number(event.total_price)) && Number(event.total_price) > 0 &&
+      Number.isFinite(Number(event.deposit_amount)) && Number(event.deposit_amount) > 0 &&
+      Number.isFinite(Number(event.balance_due)) && Number(event.balance_due) >= 0
+    const testCheckoutToken = typeof req.body.test_token === "string"
+      ? req.body.test_token
+      : undefined
+    const configuredTestCheckoutToken = process.env.TAP_TOAST_TEST_CHECKOUT_TOKEN
+    // TEMPORARY E2E $1 CHECKOUT TEST — REMOVE AFTER PRODUCTION VALIDATION
+    const isOneDollarTestCheckout =
+      isDeposit &&
+      hasValidStoredPricing &&
+      process.env.TAP_TOAST_ALLOW_ONE_DOLLAR_TEST === "true" &&
+      Boolean(configuredTestCheckoutToken) &&
+      testCheckoutToken === configuredTestCheckoutToken
+    const stripeAmount = isOneDollarTestCheckout ? 1 : amount
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
@@ -111,7 +128,7 @@ router.post("/create-checkout-session", async (req, res) => {
                 ? "Tap & Toast Event Deposit"
                 : "Tap & Toast Event Balance",
             },
-            unit_amount: Math.round((amount || 0) * 100),
+            unit_amount: Math.round((stripeAmount || 0) * 100),
           },
           quantity: 1,
         },
@@ -125,6 +142,7 @@ router.post("/create-checkout-session", async (req, res) => {
         type,
         ...(cid ? { cid } : {}),
         ...getMountainViewMetadata(event),
+        ...(isOneDollarTestCheckout ? { test_checkout: "one-dollar" } : {}),
       },
     })
 
