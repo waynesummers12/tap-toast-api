@@ -109,7 +109,7 @@ router.post("/create", async (req, res) => {
 
     // 🔥 SAFE PRICING CALCULATION (with custom override)
     const hours = Number(parsed.hours || 0)
-    const bartenders = Number(parsed.bartenders || 0)
+    const bartenders = mountainViewPricing?.bartendersNeeded ?? Number(parsed.bartenders || 0)
     const base = 600
     const staffing = bartenders * hours * 40
 
@@ -137,6 +137,14 @@ router.post("/create", async (req, res) => {
 
       // 🔥 MATCH SCHEMA
       bartenders_needed: bartenders,
+      guest_count: parsed.guests ?? null,
+      ...(mountainViewPricing
+        ? {
+            venue: mountainViewPricing.venue,
+            package_key: mountainViewPricing.packageKey,
+            package_name: mountainViewPricing.packageName
+          }
+        : {}),
 
       base_price: 600,
       bartender_rate: 25,

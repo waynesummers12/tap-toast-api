@@ -17,6 +17,18 @@ const BASE_URL =
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
+function getMountainViewMetadata(event: any): Record<string, string> {
+  if (event.venue !== "mountain-view") return {}
+  if (event.package_key === "classic" && event.package_name !== "Classic") return {}
+  if (event.package_key === "signature" && event.package_name !== "Signature") return {}
+  if (event.package_key !== "classic" && event.package_key !== "signature") return {}
+
+  return {
+    venue: event.venue,
+    package_key: event.package_key,
+  }
+}
+
 // Helper to fetch event
 const getEvent = async (eventId: string) => {
   const { data: event, error } = await supabase
@@ -98,6 +110,7 @@ router.post("/create-checkout-session", async (req, res) => {
         event_id: eventId,
         type,
         ...(cid ? { cid } : {}),
+        ...getMountainViewMetadata(event),
       },
     })
 
@@ -128,6 +141,7 @@ router.post("/send-deposit", async (req, res) => {
       metadata: {
         event_id: event.id,
         type: "deposit",
+        ...getMountainViewMetadata(event),
       },
 
       line_items: [

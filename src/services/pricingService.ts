@@ -22,8 +22,12 @@ export type PricingResult = {
 }
 
 export type MountainViewPricingResult = {
+  venue: "mountain-view"
+  packageKey: "classic" | "signature"
+  packageName: "Classic" | "Signature"
   packagePrice: number
   staffingFee: number
+  bartendersNeeded: number
   totalPrice: number
   depositAmount: number
   balanceDue: number
@@ -33,26 +37,32 @@ const BASE_EVENT_PRICE = 600
 const BARTENDER_RATE_CHARGED = 40
 const BARTENDER_PAY_RATE = 25
 
-const MOUNTAIN_VIEW_PACKAGE_PRICES: Record<string, number> = {
-  classic: 1195,
-  signature: 1495
-}
+const MOUNTAIN_VIEW_PACKAGES = {
+  classic: { name: "Classic", price: 1195 },
+  signature: { name: "Signature", price: 1495 }
+} as const
 
 export function calculateMountainViewPricing(
   packageKey: string,
   guests: number
 ): MountainViewPricingResult | null {
-  const packagePrice = MOUNTAIN_VIEW_PACKAGE_PRICES[packageKey]
-  if (packagePrice === undefined) return null
+  if (packageKey !== "classic" && packageKey !== "signature") return null
+
+  const selectedPackage = MOUNTAIN_VIEW_PACKAGES[packageKey]
 
   const staffingFee = guests >= 101 ? 250 : 0
-  const totalPrice = packagePrice + staffingFee
+  const bartendersNeeded = guests >= 101 ? 2 : 1
+  const totalPrice = selectedPackage.price + staffingFee
   const depositAmount = totalPrice * 0.5
   const balanceDue = totalPrice - depositAmount
 
   return {
-    packagePrice,
+    venue: "mountain-view",
+    packageKey,
+    packageName: selectedPackage.name,
+    packagePrice: selectedPackage.price,
     staffingFee,
+    bartendersNeeded,
     totalPrice,
     depositAmount,
     balanceDue

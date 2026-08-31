@@ -92,6 +92,18 @@ function formatTime(time: string) {
   return `${hour}:${minute} ${ampm}`
 }
 
+function formatCurrency(amount: unknown): string {
+  const value = Number(amount)
+  return Number.isFinite(value) ? value.toFixed(2) : "0.00"
+}
+
+function getMountainViewPackageName(event: any): "Classic" | "Signature" | null {
+  if (event.venue !== "mountain-view") return null
+  if (event.package_key === "classic" && event.package_name === "Classic") return "Classic"
+  if (event.package_key === "signature" && event.package_name === "Signature") return "Signature"
+  return null
+}
+
 export async function sendBookingConfirmation(event: any) {
   try {
     console.log("📨 Sending booking confirmation for event:", event.id)
@@ -227,18 +239,29 @@ export async function sendBookingConfirmation(event: any) {
 
 export async function sendInternalNotification(event: any) {
   try {
+    const mountainViewPackageName = getMountainViewPackageName(event)
     await resend.emails.send({
       from: "Tap & Toast Alerts <jen@coloradotapandtoast.com>",
       to: ["jen@coloradotapandtoast.com", "waynesummers12@gmail.com"],
-      subject: `🚨 New Booking - ${event.event_date}`,
+      subject: mountainViewPackageName
+        ? `🚨 New Mountain View ${mountainViewPackageName} Booking - ${event.event_date}`
+        : `🚨 New Booking - ${event.event_date}`,
       html: `
         <h2>New Booking 🚨</h2>
         <p><strong>Name:</strong> ${event.customer?.name || event.customer_name || event.name || event.metadata?.customer_name || "N/A"}</p>
         <p><strong>Email:</strong> ${event.customer?.email || event.customer_email || event.email || event.metadata?.customer_email || "N/A"}</p>
         <p><strong>Event Date:</strong> ${event.event_date}</p>
         <p><strong>Start Time:</strong> ${formatTime(event.start_time)}</p>
-        <p><strong>Event Type:</strong> ${event.event_type || "N/A"}</p>
         <p><strong>Location:</strong> ${event.location || "N/A"}</p>
+        ${mountainViewPackageName ? `
+          <p><strong>Venue:</strong> Mountain View Menagerie</p>
+          <p><strong>Package:</strong> ${mountainViewPackageName}</p>
+          <p><strong>Guests:</strong> ${event.guest_count}</p>
+          <p><strong>Bartenders:</strong> ${event.bartenders_needed}</p>
+          <p><strong>Total:</strong> $${formatCurrency(event.total_price)}</p>
+          <p><strong>Deposit:</strong> $${formatCurrency(event.deposit_amount)}</p>
+          <p><strong>Remaining Balance:</strong> $${formatCurrency(event.balance_due)}</p>
+        ` : ""}
         ${event.upgrades && event.upgrades.length ? `
           <p><strong>Upgrades:</strong> ${formatUpgradesWithPricing(event.upgrades)}</p>
           <p><strong>Upgrades Total:</strong> $${calculateUpgradesTotal(event.upgrades)}</p>
@@ -323,6 +346,7 @@ export async function sendBalancePaymentEmail(event: any, paymentUrl: string) {
 export async function sendPaymentReceivedEmail(event: any, type: "deposit" | "balance") {
   try {
     console.log("📨 Sending payment received email:", type, event.id)
+    const mountainViewPackageName = getMountainViewPackageName(event)
     const recipient = getRecipient(event)
     if (!recipient) {
       console.error("❌ No email found for event:", event)
@@ -341,8 +365,8 @@ export async function sendPaymentReceivedEmail(event: any, type: "deposit" | "ba
         <div style="max-width: 600px; margin: 0 auto; background: #111111; border-radius: 10px; overflow: hidden; border: 1px solid #222;">
 
           <div style="background: linear-gradient(to right, #facc15, #eab308); padding: 20px; text-align: center;">
-            <h1 style="margin: 0; font-size: 24px; color: #000;">Tap & Toast</h1>
-            <p style="margin: 0; font-size: 14px; color: #000;">Mobile Bar Experience</p>
+            <h1 style="margin: 0; font-size: 24px; color: #000;">${mountainViewPackageName ? "Mountain View Menagerie" : "Tap & Toast"}</h1>
+            <p style="margin: 0; font-size: 14px; color: #000;">${mountainViewPackageName ? "Preferred Bartending Experience" : "Mobile Bar Experience"}</p>
           </div>
 
           <div style="padding: 25px;">
@@ -365,7 +389,22 @@ export async function sendPaymentReceivedEmail(event: any, type: "deposit" | "ba
               <p style="margin: 5px 0;"><strong>Location:</strong> ${event.location}</p>
               <p style="margin: 5px 0;"><strong>Start Time:</strong> ${formatTime(event.start_time)}</p>
               <p style="margin: 5px 0;"><strong>Duration:</strong> ${event.hours} hours</p>
+              ${mountainViewPackageName ? `
+                <p style="margin: 5px 0;"><strong>Venue:</strong> Mountain View Menagerie</p>
+                <p style="margin: 5px 0;"><strong>Package:</strong> ${mountainViewPackageName}</p>
+                <p style="margin: 5px 0;"><strong>Guest Count:</strong> ${event.guest_count}</p>
+                <p style="margin: 5px 0;"><strong>Bartenders:</strong> ${event.bartenders_needed}</p>
+              ` : ""}
             </div>
+
+            ${type === "deposit" && mountainViewPackageName ? `
+            <div style="margin: 20px 0; padding: 15px; background: #1a1a1a; border-radius: 8px;">
+              <h3 style="margin-top: 0; color: #facc15;">Payment Summary</h3>
+              <p style="margin: 5px 0;"><strong>Total Booking Price:</strong> $${formatCurrency(event.total_price)}</p>
+              <p style="margin: 5px 0; color: #22c55e;"><strong>Deposit Paid:</strong> $${formatCurrency(event.payment_amount ?? event.deposit_amount)}</p>
+              <p style="margin: 5px 0;"><strong>Remaining Balance:</strong> $${formatCurrency(event.balance_due)}</p>
+            </div>
+            ` : ""}
 
             ${type === "balance" ? `
             <div style="margin: 20px 0; padding: 15px; background: #1a1a1a; border-radius: 8px;">

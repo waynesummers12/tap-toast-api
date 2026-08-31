@@ -98,9 +98,22 @@ router.post("/", async (req, res) => {
 
       if (paymentError) {
         console.error("❌ Payment insert failed:", paymentError)
-      } else {
-        console.log("✅ Payment saved")
+        const { data: concurrentlyProcessedPayment } = await supabase
+          .from("payments")
+          .select("id")
+          .eq("stripe_session_id", stripeSessionId)
+          .maybeSingle()
+
+        if (concurrentlyProcessedPayment) {
+          console.log("⚠️ Webhook concurrently processed:", stripeSessionId)
+          if (paymentType === "deposit") await markQuoteConverted(cid)
+          return res.json({ received: true })
+        }
+
+        throw paymentError
       }
+
+      console.log("✅ Payment saved")
 
       // 🔄 UPDATE EVENT (deposit)
       if (paymentType === "deposit") {
@@ -140,7 +153,10 @@ router.post("/", async (req, res) => {
             console.log("📧 Sending deposit emails...")
             await sendInternalNotification(eventData)
             await createCalendarEvent(eventData)
-            await sendPaymentReceivedEmail(eventData, "deposit")
+            await sendPaymentReceivedEmail(
+              { ...eventData, payment_amount: amount },
+              "deposit"
+            )
             console.log("✅ Deposit flow completed")
           } catch (err) {
             console.error("❌ Post-deposit tasks failed:", err)
@@ -184,7 +200,10 @@ router.post("/", async (req, res) => {
           try {
             console.log("📧 Sending balance emails...")
             await sendInternalNotification(eventData)
-            await sendPaymentReceivedEmail(eventData, "balance")
+            await sendPaymentReceivedEmail(
+              { ...eventData, payment_amount: amount },
+              "balance"
+            )
             console.log("✅ Balance flow completed")
           } catch (err) {
             console.error("❌ Post-balance tasks failed:", err)
