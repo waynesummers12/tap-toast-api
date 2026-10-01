@@ -2,6 +2,8 @@ import express from "express"
 import Stripe from "stripe"
 import { createClient } from "@supabase/supabase-js"
 
+import { upgradeOption } from "../services/upgradeService"
+
 const router = express.Router()
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
@@ -36,36 +38,21 @@ router.post("/upgrade", async (req, res) => {
       return res.status(400).json({ error: "Customer email not found for event" })
     }
 
-    // Define upgrade pricing
-    let price = 0
-    let description = ""
-
-    switch (upgradeType) {
-      case "extra_hour":
-        price = 100
-        description = "Extra Hour of Service"
-        break
-      case "premium_drinks":
-        price = 150
-        description = "Premium Drink Package Upgrade"
-        break
-      case "extra_bartender":
-        price = 200
-        description = "Additional Bartender"
-        break
-      default:
-        return res.status(400).json({ error: "Invalid upgrade type" })
+    const option = upgradeOption(upgradeType)
+    if (!option) return res.status(400).json({ error: "Invalid upgrade type" })
+    if (!event.deposit_paid || event.event_status !== "confirmed") {
+      return res.status(409).json({ error: "Only confirmed bookings can be upgraded" })
     }
 
     const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000"
 
     const successUrl = baseUrl.startsWith("http")
-      ? `${baseUrl}/success?upgrade=true&event_id=${event.id}`
-      : `http://${baseUrl}/success?upgrade=true&event_id=${event.id}`
+      ? `${baseUrl}/success?upgrade=true&event_id=${event.id}&session_id={CHECKOUT_SESSION_ID}`
+      : `http://${baseUrl}/success?upgrade=true&event_id=${event.id}&session_id={CHECKOUT_SESSION_ID}`
 
     const cancelUrl = baseUrl.startsWith("http")
-      ? `${baseUrl}/dashboard`
-      : `http://${baseUrl}/dashboard`
+      ? `${baseUrl}/upgrade?eventId=${event.id}`
+      : `http://${baseUrl}/upgrade?eventId=${event.id}`
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -83,9 +70,9 @@ router.post("/upgrade", async (req, res) => {
           price_data: {
             currency: "usd",
             product_data: {
-              name: description,
+              name: option.label,
             },
-            unit_amount: price * 100,
+            unit_amount: option.cents,
           },
           quantity: 1,
         },

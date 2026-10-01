@@ -138,6 +138,7 @@ export async function sendBookingConfirmation(event: any) {
 
             <div style="margin: 20px 0; padding: 15px; background: #1a1a1a; border-radius: 8px;">
               <h3 style="margin-top: 0; color: #facc15;">Event Details</h3>
+              <p><strong>Service:</strong> ${event.service_type === "soda" ? "Dirty Soda Bar" : "Bartending"}</p>
               <p style="margin: 5px 0;"><strong>Date:</strong> ${event.event_date}</p>
               <p style="margin: 5px 0;"><strong>Location:</strong> ${event.location}</p>
               <p style="margin: 5px 0;"><strong>Start Time:</strong> ${formatTime(event.start_time)}</p>
@@ -248,6 +249,7 @@ export async function sendInternalNotification(event: any, idempotencyKey?: stri
         <h2>New Booking 🚨</h2>
         <p><strong>Name:</strong> ${event.customer?.name || event.customer_name || event.name || event.metadata?.customer_name || "N/A"}</p>
         <p><strong>Email:</strong> ${event.customer?.email || event.customer_email || event.email || event.metadata?.customer_email || "N/A"}</p>
+        <p><strong>Service:</strong> ${event.service_type === "soda" ? "Dirty Soda Bar" : "Bartending"}</p>
         <p><strong>Event Date:</strong> ${event.event_date}</p>
         <p><strong>Start Time:</strong> ${formatTime(event.start_time)}</p>
         <p><strong>Location:</strong> ${event.location || "N/A"}</p>
@@ -312,6 +314,7 @@ export async function sendBalancePaymentEmail(
 
             <div style="margin: 20px 0; padding: 15px; background: #1a1a1a; border-radius: 8px;">
               <h3 style="margin-top: 0; color: #facc15;">Event Details</h3>
+              <p><strong>Service:</strong> ${event.service_type === "soda" ? "Dirty Soda Bar" : "Bartending"}</p>
               <p style="margin: 5px 0;"><strong>Date:</strong> ${event.event_date}</p>
               <p style="margin: 5px 0;"><strong>Location:</strong> ${event.location}</p>
               <p style="margin: 5px 0;"><strong>Start Time:</strong> ${formatTime(event.start_time)}</p>
@@ -432,6 +435,7 @@ export async function sendPaymentReceivedEmail(
 
             <div style="margin: 20px 0; padding: 15px; background: #1a1a1a; border-radius: 8px;">
               <h3 style="margin-top: 0; color: #facc15;">Event Details</h3>
+              <p><strong>Service:</strong> ${event.service_type === "soda" ? "Dirty Soda Bar" : "Bartending"}</p>
               <p style="margin: 5px 0;"><strong>Date:</strong> ${event.event_date}</p>
               <p style="margin: 5px 0;"><strong>Location:</strong> ${event.location}</p>
               <p style="margin: 5px 0;"><strong>Start Time:</strong> ${formatTime(event.start_time)}</p>
@@ -522,6 +526,7 @@ export async function send15DayReminderEmail(
 
             <div style="margin: 20px 0; padding: 15px; background: #1a1a1a; border-radius: 8px;">
               <h3 style="margin-top: 0; color: #facc15;">Event Details</h3>
+              <p><strong>Service:</strong> ${event.service_type === "soda" ? "Dirty Soda Bar" : "Bartending"}</p>
               <p style="margin: 5px 0;"><strong>Date:</strong> ${event.event_date}</p>
               <p style="margin: 5px 0;"><strong>Location:</strong> ${event.location}</p>
               <p style="margin: 5px 0;"><strong>Start Time:</strong> ${formatTime(event.start_time)}</p>
@@ -578,4 +583,17 @@ export async function send15DayReminderEmail(
     console.error("15-day reminder email error:", error)
     throw error
   }
+}
+
+export async function sendUpgradeConfirmation(event: any, label: string, cents: number, sessionId: string) {
+  const recipient = getRecipient(event)
+  if (!recipient) throw new Error("Missing upgrade customer email")
+  const result = await resend.emails.send({
+    from: "Tap & Toast <jen@coloradotapandtoast.com>",
+    to: recipient,
+    bcc: INTERNAL_EMAILS,
+    subject: "Your Tap & Toast upgrade is confirmed",
+    text: `${label} has been added to your event. Payment received: $${(cents / 100).toFixed(2)}. Event: ${event.id}. Reply to this email or call Jen at 720-643-9690 with any questions.`,
+  }, { idempotencyKey: `stripe-${sessionId}-upgrade-confirmation` })
+  if (result.error) throw new Error(result.error.message)
 }

@@ -16,6 +16,7 @@ const supabase = createClient(
 )
 
 type CreateEventPayload = {
+  service_type: "bartending" | "soda"
   cid?: string
   name: string
   email: string
@@ -51,12 +52,14 @@ function isIntegerInRange(value: unknown, min: number, max: number): boolean {
 
 function parseCreateEvent(body: any): CreateEventPayload | null {
   if (!body) return null
+  if (body.service_type !== undefined && !["bartending", "soda"].includes(body.service_type)) return null
   const required = ["name","email","event_date","location","start_time"]
   for (const k of required) {
     if (!body[k]) return null
   }
   if (body.cid && !UUID_PATTERN.test(String(body.cid))) return null
   return {
+    service_type: body.service_type || "bartending",
     cid: body.cid ? String(body.cid) : undefined,
     name: String(body.name),
     email: String(body.email),
@@ -149,6 +152,7 @@ router.post("/create", async (req, res) => {
 
     const eventData = {
       customer_id: customer.id,
+      service_type: isMountainView ? "bartending" : parsed.service_type,
       event_date: parsed.event_date,
       location: parsed.location,
       start_time: parsed.start_time,
@@ -348,6 +352,17 @@ router.get("/:eventId/payment-status", async (req, res) => {
     const paymentType = req.query.type === "balance" ? "balance" : "deposit"
     if (!UUID_PATTERN.test(eventId)) {
       return res.status(400).json({ success: false, error: "Invalid event id" })
+    }
+
+    if (req.query.type === "upgrade") {
+      const sessionId = req.query.session_id
+      if (typeof sessionId !== "string" || !/^cs_[a-zA-Z0-9_]+$/.test(sessionId)) {
+        return res.status(400).json({ error: "Invalid checkout session" })
+      }
+      const { data: upgrade, error } = await supabase.from("paid_upgrades")
+        .select("stripe_session_id").eq("event_id", eventId).eq("stripe_session_id", sessionId).maybeSingle()
+      if (error) throw error
+      return res.json({ success: true, payment_confirmed: Boolean(upgrade) })
     }
 
     const { data: event, error: eventError } = await supabase
@@ -585,6 +600,7 @@ router.post("/save-quote", async (req, res) => {
       guests,
       bartenders,
       event_type,
+      service_type,
       upgrades,
       estimated_total,
       deposit
@@ -600,6 +616,7 @@ router.post("/save-quote", async (req, res) => {
       upgrades.every((value) => isStringInRange(value, 1, 50))
     )
     const validPayload =
+      (service_type === undefined || service_type === "bartending" || service_type === "soda") &&
       isStringInRange(name, 1, 100) &&
       isStringInRange(email, 3, 254) && EMAIL_PATTERN.test(email) &&
       (phone === undefined || phone === null || isStringInRange(phone, 0, 30)) &&
@@ -645,6 +662,7 @@ router.post("/save-quote", async (req, res) => {
           name,
           email,
           event_date,
+          service_type: service_type || "bartending",
           ...(hasValue(phone) ? { phone } : {}),
           ...(hasValue(location) ? { location } : {}),
           ...(hasValue(start_time) ? { start_time } : {}),

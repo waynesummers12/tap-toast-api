@@ -1,9 +1,11 @@
+import { validatePaidUpgrade } from "../services/upgradeService"
 import express from "express"
 import Stripe from "stripe"
 import { createClient } from "@supabase/supabase-js"
 import {
   sendInternalNotification,
   sendPaymentReceivedEmail,
+  sendUpgradeConfirmation,
 } from "../services/emailService"
 import { createCalendarEvent } from "../services/calendarService"
 
@@ -194,6 +196,30 @@ router.post("/", async (req, res) => {
       console.log("🔥 Webhook received: checkout.session.completed")
       console.log("📦 Stripe checkout session received")
 
+      if (session.metadata?.type === "upsell" || session.metadata?.type === "upgrade") {
+        const { eventId, kind, option } = validatePaidUpgrade(session)
+        const { error: applyError } = await supabase.rpc("apply_paid_upgrade", {
+          p_session: session.id, p_event: eventId, p_upgrade: kind, p_amount: option.cents,
+        })
+        if (applyError) throw applyError
+        const { data: purchase, error: purchaseError } = await supabase.from("paid_upgrades")
+          .select("customer_email_sent_at").eq("stripe_session_id", session.id).single()
+        if (purchaseError) throw purchaseError
+        if (!purchase.customer_email_sent_at) {
+          const { data: booking, error: bookingError } = await supabase.from("events")
+            .select("*, customer:customers(name,email)").eq("id", eventId).single()
+          if (bookingError) throw bookingError
+          await sendUpgradeConfirmation(booking, option.label, option.cents, session.id)
+          const { error: notificationError } = await supabase.from("paid_upgrades")
+            .update({ customer_email_sent_at: new Date().toISOString() }).eq("stripe_session_id", session.id)
+          if (notificationError) throw notificationError
+        }
+        return res.json({ received: true })
+      }
+      if (session.payment_status !== "paid" || session.currency !== "usd") {
+        return res.status(400).json({ error: "Payment not settled in USD" })
+      }
+
       const eventId = session.metadata?.event_id
       const paymentType = session.metadata?.type || "deposit"
       const cid = session.metadata?.cid
@@ -362,10 +388,6 @@ router.post("/", async (req, res) => {
         console.log(`✅ ${paymentType} flow completed`)
       }
 
-      // 🚀 Upgrade placeholder
-      if (paymentType === "upgrade") {
-        console.log("🔥 Upgrade purchased for event:", eventId)
-      }
     }
 
     res.json({ received: true })
