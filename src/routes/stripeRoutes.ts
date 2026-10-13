@@ -1,8 +1,9 @@
+import { SERVICE_LABELS } from "../lib/serviceTypes"
 import express from "express"
 import Stripe from "stripe"
 import { supabase } from "../lib/supabase"
 import { sendEmail } from "../lib/email"
-import { sendBalancePaymentEmail } from "../services/emailService"
+import { randomUUID } from "node:crypto"
 import { requireAdmin, requireAdminForNonDeposit } from "../middleware/auth"
 
 const router = express.Router()
@@ -148,128 +149,68 @@ router.post("/create-checkout-session", requireAdminForNonDeposit, async (req, r
   }
 })
 
-// SEND DEPOSIT PAYMENT LINK
-router.post("/send-deposit", requireAdmin, async (req, res) => {
-  try {
-    const eventId = req.body.eventId || req.body.event_id
+const html = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]!))
+const dollars = (cents: number) => new Intl.NumberFormat("en-US", {style:"currency",currency:"USD"}).format(cents / 100)
 
-    const event = await getEvent(eventId)
-    const amountCents = Math.round(Number(event.deposit_amount) * 100)
-
-    if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
-      return res.status(400).json({ error: "Invalid deposit amount" })
+// Admin email actions. Creating/sending a request never changes payment status.
+for (const action of ["deposit", "balance", "invoice"] as const) {
+  router.post(`/send-${action}`, requireAdmin, async (req, res) => {
+    try {
+      const eventId = req.body.eventId || req.body.event_id
+      const requestId = req.body.request_id || randomUUID()
+      if (typeof eventId !== "string" || !UUID_PATTERN.test(eventId) || typeof requestId !== "string" || !UUID_PATTERN.test(requestId))
+        return res.status(400).json({error:"Invalid event or request ID"})
+      const event = await getEvent(eventId)
+      if (event.event_status === "cancelled" || event.status === "cancelled")
+        return res.status(409).json({error:"This event is cancelled."})
+      const recipient = String(event.customer?.email || event.email || "").trim()
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient))
+        return res.status(400).json({error:"Add a valid customer email before sending a payment request."})
+      if (event.balance_paid)
+        return res.status(409).json({error:"This event is already fully paid."})
+      const type = action === "invoice" ? (event.deposit_paid ? "balance" : "deposit") : action
+      if (type === "deposit" && event.deposit_paid)
+        return res.status(409).json({error:"The deposit is already paid."})
+      if (type === "balance" && !event.deposit_paid && Number(event.deposit_amount) > 0)
+        return res.status(409).json({error:"Collect the deposit before requesting the remaining balance."})
+      const amountCents = Math.round(Number(type === "deposit" ? event.deposit_amount : event.balance_due) * 100)
+      if (!Number.isSafeInteger(amountCents) || amountCents <= 0)
+        return res.status(400).json({error:`No valid ${type} amount is due.`})
+      const key = `admin-${action}-${eventId}-${requestId}`
+      const session = await stripe.checkout.sessions.create({
+        mode:"payment", customer_email:recipient,
+        metadata:{event_id:eventId,type,expected_amount_cents:String(amountCents),...getMountainViewMetadata(event)},
+        line_items:[{price_data:{currency:"usd",product_data:{name:`Tap & Toast Event ${type === "deposit" ? "Deposit" : "Balance"}`},unit_amount:amountCents},quantity:1}],
+        success_url:`${BASE_URL}/success?event_id=${encodeURIComponent(eventId)}&payment_type=${type}`,
+        cancel_url:getBookingCancelUrl(event),
+      }, {idempotencyKey:key})
+      if (!session.url) throw new Error("Stripe did not return a checkout URL")
+      const totalCents = Math.round(Number(event.custom_total_price ?? event.total_price) * 100)
+      const depositCents = Math.round(Number(event.deposit_amount) * 100)
+      const summary = action === "invoice" ? `
+        <h2>Event invoice</h2>
+        <p>Reference: ${html(eventId)}</p>
+        <table cellpadding="8">
+          <tr><th align="left">Event date</th><td>${html(String(event.event_date || "").slice(0,10))}</td></tr>
+          <tr><th align="left">Location</th><td>${html(event.location)} ${html(event.city)}</td></tr>
+          <tr><th align="left">Service</th><td>${html(SERVICE_LABELS[event.service_type] || "Bartending")}</td></tr>
+          <tr><th align="left">Service hours</th><td>${html(event.hours)}</td></tr>
+          <tr><th align="left">Drinks</th><td>${html(event.drinks_serving || "To be confirmed")}</td></tr>
+          <tr><th align="left">Agreed total</th><td>${html(dollars(totalCents))}</td></tr>
+          <tr><th align="left">Deposit</th><td>${html(dollars(depositCents))} (${event.deposit_paid ? "paid" : "unpaid"})</td></tr>
+          <tr><th align="left">${type === "deposit" ? "Deposit requested now" : "Remaining balance requested"}</th><td>${html(dollars(amountCents))}</td></tr>
+        </table>` : `<h2>${type === "deposit" ? "Event deposit" : "Remaining event balance"}</h2><p>Event date: ${html(String(event.event_date || "").slice(0,10))}</p><p>Amount requested: ${html(dollars(amountCents))}</p>`
+      await sendEmail({to:recipient,
+        subject: action === "invoice" ? "Your Event Invoice – Colorado Tap & Toast" : type === "deposit" ? "Complete Your Deposit – Colorado Tap & Toast" : "Final Payment Due – Colorado Tap & Toast",
+        html:`<p>Hi ${html(event.customer?.name || "there")},</p>${summary}<p><a href="${html(session.url)}">Pay ${type === "deposit" ? "deposit" : "balance"} — ${html(dollars(amountCents))}</a></p><p>Questions? Reply to this email to connect with Jen.</p><p>Colorado Tap & Toast</p>`,
+        idempotencyKey:key,
+      })
+      return res.json({success:true,recipient,payment_type:type})
+    } catch (error) {
+      console.error(`Send ${action} failed`, error)
+      return res.status(502).json({error:"The payment email could not be sent. Please retry; payment status has not changed."})
     }
-
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      payment_method_types: ["card"],
-
-      customer_email: event.customer?.email || undefined,
-
-      metadata: {
-        event_id: event.id,
-        type: "deposit",
-        expected_amount_cents: String(amountCents),
-        ...getMountainViewMetadata(event),
-      },
-
-      line_items: [
-        {
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: "Tap & Toast Event Deposit",
-            },
-            unit_amount: amountCents,
-          },
-          quantity: 1,
-        },
-      ],
-
-      success_url: `${BASE_URL}/success?event_id=${encodeURIComponent(event.id)}&payment_type=deposit`,
-      cancel_url: `${BASE_URL}/book`,
-    })
-
-    // Send email with payment link
-    await sendEmail({
-      to: event.customer?.email,
-      subject: "Complete Your Deposit – Colorado Tap & Toast",
-      html: `
-        <p>Hi ${event.customer?.name || "there"},</p>
-
-        <p>Please secure your event date by completing your deposit below:</p>
-
-        <p>
-          <a href="${session.url as string}" target="_blank">
-            Pay Deposit
-          </a>
-        </p>
-
-        <p>We look forward to serving you!</p>
-        <p>— Colorado Tap & Toast</p>
-      `,
-    })
-
-    res.json({ success: true, url: session.url as string })
-  } catch (err) {
-    console.error("Deposit link error:", err)
-    res.status(500).json({ error: "Failed to send deposit link" })
-  }
-})
-
-// SEND BALANCE PAYMENT LINK
-router.post("/send-balance", requireAdmin, async (req, res) => {
-  try {
-    const eventId = req.body.eventId || req.body.event_id
-
-    const event = await getEvent(eventId)
-    const amountCents = Math.round(Number(event.balance_due) * 100)
-
-    if (Number(event.balance_due) === 0) {
-      return res.status(400).json({ error: "No balance due" })
-    }
-
-    if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
-      return res.status(400).json({ error: "Invalid balance amount" })
-    }
-
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      payment_method_types: ["card"],
-
-      customer_email: event.customer?.email || undefined,
-
-      metadata: {
-        event_id: event.id,
-        type: "balance",
-        expected_amount_cents: String(amountCents),
-      },
-
-      line_items: [
-        {
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: "Tap & Toast Event Balance",
-            },
-            unit_amount: amountCents,
-          },
-          quantity: 1,
-        },
-      ],
-
-      success_url: `${BASE_URL}/success?event_id=${encodeURIComponent(event.id)}&payment_type=balance`,
-      cancel_url: `${BASE_URL}/book`,
-    })
-
-    // Send styled balance email
-    await sendBalancePaymentEmail(event, session.url as string)
-
-    res.json({ success: true, url: session.url as string })
-  } catch (err) {
-    console.error("Balance link error:", err)
-    res.status(500).json({ error: "Failed to send balance link" })
-  }
-})
+  })
+}
 
 export default router

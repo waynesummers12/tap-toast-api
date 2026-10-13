@@ -25,6 +25,14 @@ async function pdf(text){return new Promise(resolve=>{const doc=new PDFDocument(
  const portable=parseAgreementText(sample+'\nCity: Golden\n');
  portable.service_type='portable_bar';
  assert(validateDetails(portable));
+ for(const [label,value] of [['Bartending','bartending'],['Tap Trailer','tap_trailer'],['Popup Trailer','popup_trailer'],['Portable Bar','portable_bar'],['Dirty Soda Bar','soda']]) {
+   assert.equal(parseAgreementText('Service Type: '+label).service_type,value);
+   assert(validateDetails({...portable,service_type:value}));
+ }
+ assert.equal(parseAgreementText('Services Description. Company is also to provide the pop-up camper at the campground. TERM OF SERVICES.').service_type,'popup_trailer');
+ assert.equal(parseAgreementText('Services Description. Client is also going to be using the 4 tap trailer. TERM OF SERVICES.').service_type,'tap_trailer');
+ assert.equal(parseAgreementText('Services Description. Client agrees to pick up the 4 keg- mobile bar trailer. TERM OF SERVICES.').service_type,'tap_trailer');
+ assert.equal(parseAgreementText('Services Description. Company will not provide a tap trailer. TERM OF SERVICES.').service_type,'');
  assert.equal(validateDetails({...portable,city:'x'.repeat(201)}),null);
  assert.equal(validateDetails({...portable,city:42}),null);
  assert.equal(parseAgreementText('Service Type: Portable bar').service_type,'portable_bar');
@@ -121,6 +129,7 @@ async function pdf(text){return new Promise(resolve=>{const doc=new PDFDocument(
  await db.exec(fs.readFileSync(root+'/supabase/migrations/'+migration,'utf8'));
  await db.exec(fs.readFileSync(root+'/supabase/migrations/20261013193906_agreement_city_portable_bar.sql','utf8'));
  await db.exec(fs.readFileSync(root+'/supabase/migrations/20261013194140_agreement_half_hour_service.sql','utf8'));
+ await db.exec(fs.readFileSync(root+'/supabase/migrations/20261013204039_agreement_service_options.sql','utf8'));
  const ids=['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333'];
  for(const [i,id] of ids.entries()) await db.query('insert into event_agreements(id,file_hash,file_name,storage_path) values($1,$2,$3,$4)',[id,String(i).repeat(64),'test.pdf',id+'/test.pdf']);
  const importEvent=async(id,d=details,allow=false)=>(await db.query('select import_signed_agreement($1,$2,$3) id',[id,JSON.stringify(d),allow])).rows[0].id;
@@ -132,6 +141,7 @@ async function pdf(text){return new Promise(resolve=>{const doc=new PDFDocument(
  event=(await db.query('select * from events where id=$1',[id2])).rows[0];assert.equal(Number(event.balance_due),1000);
  const id3=await importEvent(ids[2],{...details,event_date:'2026-10-25',name:'Changed name',city:'Golden',service_type:'portable_bar',hours:'5.5',deposit_paid:true,balance_paid:true});
  event=(await db.query('select * from events where id=$1',[id3])).rows[0];assert.equal(Number(event.balance_due),0);assert.equal(Number(event.hours),5.5);assert.equal(event.city,"Golden");assert.equal(event.service_type,"portable_bar");
+ for(const type of ['tap_trailer','popup_trailer']) { await db.query('update events set service_type=$1 where id=$2',[type,id3]); assert.equal((await db.query('select service_type from events where id=$1',[id3])).rows[0].service_type,type); }
  assert.equal((await db.query('select count(*)::int n from customers')).rows[0].n,1);assert.equal((await db.query('select name from customers')).rows[0].name,'Test Customer');
  assert.equal((await db.query("select public from storage.buckets where id='event-agreements'")).rows[0].public,false);
  assert.equal((await db.query("select relrowsecurity from pg_class where oid='event_agreements'::regclass")).rows[0].relrowsecurity,true);

@@ -1,3 +1,4 @@
+import { SERVICE_LABELS } from "../lib/serviceTypes";
 import mammoth from "mammoth";
 import { dirname, join } from "node:path";
 import yauzl from "yauzl";
@@ -165,6 +166,8 @@ export function parseAgreementText(text: string): AgreementDetails {
   );
   const service = label("service(?: type)?");
   if (/soda/i.test(service)) result.service_type = "soda";
+  else if (/pop[- ]?up (?:trailer|camper)/i.test(service)) result.service_type = "popup_trailer";
+  else if (/(?:tap|keg|mobile bar) trailer/i.test(service)) result.service_type = "tap_trailer";
   else if (/portable(?: fold)? bar|pop[- ]?up bar/i.test(service)) result.service_type = "portable_bar";
   else if (/bartend|bar service/i.test(service))
     result.service_type = "bartending";
@@ -192,11 +195,19 @@ export function parseAgreementText(text: string): AgreementDetails {
     result.service_type = "bartending";
 
   const serviceDescription = prose.match(/Services Description\.\s*(.*?)\b(?:3\.\s*)?TERM OF SERVICES\b/i)?.[1] || "";
-  if (!service && !result.service_type && /\b(?:bartending service|(?:mobile bar|tap) trailer)\b/i.test(serviceDescription))
+  if (!service && !result.service_type && /\b(?:bartending service)\b/i.test(serviceDescription))
     result.service_type = "bartending";
 
   if (!service && /\bCompany\s+(?:(?:is to|will|shall|agrees to)\s+)?(?:also\s+)?(?:supply|provide)\b[^.!?]{0,100}\b(?:portable(?: fold)? bars?|pop[- ]?up bars?)\b/i.test(serviceDescription))
     result.service_type = "portable_bar";
+
+  if (!service) {
+    // Identify equipment from affirmative commitments, not the template introduction.
+    const commitments = serviceDescription.match(/\b(?:Company\s+(?:(?:is (?:also )?to|will|shall|agrees to)\s+)?(?:also\s+)?(?:supply|provide)|Client\s+(?:is (?:also )?going to be using|agrees to pick up))\b[^.!?]{0,180}/gi) || [];
+    const equipment = commitments.join(" ");
+    if (/\bpop[- ]?up (?:trailer|camper)\b/i.test(equipment)) result.service_type = "popup_trailer";
+    else if (/\b(?:tap|keg[- ]*(?:mobile bar)?|mobile bar)\s*trailer\b/i.test(equipment)) result.service_type = "tap_trailer";
+  }
 
   // Only explicit serving ranges can supply service hours/start time. A contracted
   // shift can include travel/setup; don't silently treat its start as serving time.
@@ -444,7 +455,7 @@ export function validateDetails(value: unknown): AgreementDetails | null {
     (details.balance_paid && !details.deposit_paid)
   )
     return null;
-  if (!["soda", "bartending", "portable_bar"].includes(details.service_type)) return null;
+  if (!Object.prototype.hasOwnProperty.call(SERVICE_LABELS, details.service_type)) return null;
   details.email = details.email.toLowerCase();
   return details;
 }

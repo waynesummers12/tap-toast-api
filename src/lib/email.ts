@@ -76,15 +76,18 @@ export async function sendEmail({
   to,
   subject,
   html,
+  idempotencyKey,
 }: {
   to: string;
   subject: string;
   html: string;
+  idempotencyKey?: string;
 }) {
-  await resend.emails.send({
+  const result = await resend.emails.send({
     from: "Colorado Tap & Toast <jen@coloradotapandtoast.com>",
     to,
     subject,
     html,
-  });
+  }, idempotencyKey ? { idempotencyKey } : undefined);
+  if (result.error) throw new Error(result.error.message);
 }
