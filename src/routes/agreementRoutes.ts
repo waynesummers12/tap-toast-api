@@ -38,7 +38,7 @@ router.post("/upload", (req, res) => {
     try {
       let parsed;
       try {
-        parsed = await extractAgreement(req.file.buffer, extension);
+        parsed = await extractAgreement(req.file.buffer, extension, req.file.originalname);
       } catch {
         return res
           .status(422)

@@ -240,6 +240,8 @@ router.get("/", requireAdmin, async (req, res) => {
         id,
         event_date,
         location,
+        city,
+        service_type,
         start_time,
         guest_count,
         hours,
