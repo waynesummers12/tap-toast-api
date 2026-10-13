@@ -232,6 +232,7 @@ router.post("/create", async (req, res) => {
 
 // GET all events
 router.get("/", requireAdmin, async (req, res) => {
+  res.set("Cache-Control", "no-store")
   try {
     const { data, error } = await supabase
       .from("events")
@@ -240,6 +241,7 @@ router.get("/", requireAdmin, async (req, res) => {
         event_date,
         location,
         start_time,
+        guest_count,
         hours,
         bartenders_needed,
         total_price,
@@ -248,6 +250,7 @@ router.get("/", requireAdmin, async (req, res) => {
         deposit_paid,
         balance_paid,
         event_status,
+        drinks_serving,
         bartenders,
         customers (
           name,
@@ -257,7 +260,7 @@ router.get("/", requireAdmin, async (req, res) => {
           id
         )
       `)
-      .neq("event_status", "cancelled")
+      .or("event_status.is.null,event_status.neq.cancelled")
       .order("event_date", { ascending: true })
 
     if (error) throw error
@@ -271,12 +274,14 @@ router.get("/", requireAdmin, async (req, res) => {
       total_price?: number
       deposit_amount?: number
       deposit_paid?: boolean
+      balance_paid?: boolean
       bartenders?: number
       hours?: number
     }) => ({
       ...e,
+      name: (e.customers as { name?: string } | null)?.name || "Unknown",
       assigned_bartenders_count: e.event_bartenders?.length || 0,
-      balance_remaining:
+      balance_remaining: e.balance_paid ? 0 :
         (e.total_price || 0) -
         (e.deposit_paid ? (e.deposit_amount || 0) : 0),
       profit_estimate:
@@ -426,6 +431,17 @@ router.post("/mark-paid", requireAdmin, async (req, res) => {
 })
 
 
+// Admin-maintained drink menu; no payment or email side effects.
+router.patch("/:eventId/drinks", requireAdmin, async (req, res) => {
+  if (!UUID_PATTERN.test(String(req.params.eventId)) || typeof req.body?.drinks_serving !== "string" || req.body.drinks_serving.length > 2000) {
+    return res.status(400).json({ error: "Enter a drink menu of 2,000 characters or fewer." })
+  }
+  const { data, error } = await supabase.from("events").update({ drinks_serving: req.body.drinks_serving.trim() || null }).eq("id", req.params.eventId).select("id,drinks_serving").maybeSingle()
+  if (error) return res.status(500).json({ error: "Could not save drinks." })
+  if (!data) return res.status(404).json({ error: "Event not found." })
+  return res.json({ success: true, event: data })
+})
+
 // CANCEL EVENT (soft delete via status)
 router.post("/cancel", requireAdmin, async (req, res) => {
   try {
@@ -435,14 +451,19 @@ router.post("/cancel", requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "Missing eventId" })
     }
 
-    const { error } = await supabase
+    const { data: cancelledEvent, error } = await supabase
       .from("events")
       .update({
         event_status: "cancelled"
       })
       .eq("id", eventId)
+      .select("id")
+      .maybeSingle()
 
     if (error) throw error
+    if (!cancelledEvent) {
+      return res.status(404).json({ success: false, error: "Event not found" })
+    }
 
     res.json({ success: true })
   } catch (err) {
@@ -495,7 +516,6 @@ router.get("/:id/bartenders", requireAdmin, async (req, res) => {
       .from("event_bartenders")
       .select(`
         hours,
-        pay,
         bartenders (
           id,
           name
@@ -512,8 +532,7 @@ router.get("/:id/bartenders", requireAdmin, async (req, res) => {
       event_id: eventId,
       bartenders: (data || []).map((b: any) => ({
         name: b.bartenders?.name,
-        hours: b.hours,
-        pay: b.pay
+        hours: b.hours
       }))
     })
 
@@ -563,8 +582,7 @@ router.post("/assign-bartenders", requireAdmin, async (req, res) => {
         return {
           event_id: eventId,
           bartender_id: bartenderId,
-          hours: b.hours || 0,
-          pay: b.pay || 0
+          hours: b.hours || 0
         }
       })
       .filter(Boolean)

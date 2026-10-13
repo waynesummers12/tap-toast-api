@@ -1,7 +1,6 @@
 import express from "express"
 import { calculateEventPricing } from "../services/pricingService"
 import { supabase } from "../lib/supabase"
-import { requireAdmin } from "../middleware/auth"
 
 const router = express.Router()
 
@@ -104,49 +103,6 @@ router.post("/book-event", async (req: any, res: any) => {
     res.status(500).json({
       error: "Booking failed"
     })
-  }
-})
-
-// GET /api/events
-// Returns all events for the dashboard with customer details
-router.get("/events", requireAdmin, async (req: any, res: any) => {
-  try {
-    const { data, error } = await supabase
-      .from("events")
-      .select(`
-        id,
-        event_date,
-        start_time,
-        location,
-        guest_count,
-        hours,
-        bartenders_needed,
-        total_price,
-        deposit_amount,
-        balance_due,
-        deposit_paid,
-        customers (
-          name,
-          email
-        )
-      `)
-      .order("event_date", { ascending: true })
-
-    if (error) {
-      console.error("Events fetch error:", error)
-      return res.status(500).json({ error: "Failed to fetch events" })
-    }
-
-    // Flatten customer name for the dashboard
-    const formatted = data.map((event: any) => ({
-      ...event,
-      name: event.customers?.name || "Unknown"
-    }))
-
-    res.json(formatted)
-  } catch (error) {
-    console.error("Dashboard fetch error:", error)
-    res.status(500).json({ error: "Failed to fetch events" })
   }
 })
 

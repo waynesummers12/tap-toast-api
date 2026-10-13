@@ -39,6 +39,7 @@ app.get("/", (req: any, res: any) => {
 import bookingRoutes from "./routes/bookingRoutes"
 const stripeRoutes = require("./routes/stripeRoutes").default
 import eventRoutes from "./routes/eventRoutes"
+import agreementRoutes from "./routes/agreementRoutes"
 import bartenderRoutes from "./routes/bartenderRoutes"
 import assignBartendersRoutes from "./routes/assign-bartenders"
 import upgradeRoutes from "./routes/upgrade-eventId"
@@ -48,6 +49,7 @@ import emailRoutes from "./routes/emailRoutes"
 app.use("/api", bookingRoutes)
 app.use("/api/stripe", stripeRoutes)
 app.use("/api/events", eventRoutes)
+app.use("/api/agreements", agreementRoutes)
 app.use("/api/bartenders", bartenderRoutes)
 app.use("/api", assignBartendersRoutes)
 app.use("/api", upgradeRoutes)
