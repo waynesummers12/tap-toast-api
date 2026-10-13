@@ -1,0 +1,32 @@
+const assert=require('node:assert/strict');
+const root=require('node:path').resolve(__dirname,'..');
+const {customPricing}=require(root+'/dist/services/customPricing');
+const initial={id:'11111111-1111-4111-8111-111111111111',total_price:1000,custom_total_price:null,deposit_amount:500,balance_due:500,deposit_paid:true,balance_paid:false};
+let e={...initial};
+let p=customPricing(e,1200);assert.equal(p.deposit_amount,500);assert.equal(p.balance_due,700);assert.equal(p.balance_paid,false);
+e={...e,...p};p=customPricing(e,1100);assert.equal(p.balance_due,600);
+p=customPricing(initial,500);assert.equal(p.balance_due,0);assert.equal(p.balance_paid,true);
+assert.throws(()=>customPricing(initial,499.99),/already paid/);
+p=customPricing({...initial,deposit_paid:false},1200);assert.equal(p.deposit_amount,600);assert.equal(p.balance_due,600);
+p=customPricing({...initial,deposit_paid:false},1000.01);assert.equal(p.deposit_amount,500.01);assert.equal(p.balance_due,500);
+e={...initial,balance_paid:true,balance_due:0};p=customPricing(e,1200);assert.equal(p.balance_due,200);assert.equal(p.balance_paid,false);assert.equal(p.deposit_amount,500);
+e={...e,...p};p=customPricing(e,1300);assert.equal(p.balance_due,300);
+p=customPricing({...initial,balance_paid:true,balance_due:0},1000);assert.equal(p.balance_due,0);assert.equal(p.balance_paid,true);
+assert.throws(()=>customPricing({...initial,balance_paid:true,balance_due:0},999),/already paid/);
+assert.throws(()=>customPricing({...initial,balance_due:1100},1200),/review/);
+let current={...initial}, patches=[], race=false, readError=false, missing=false;
+const client={auth:{getUser:async()=>({data:{user:{email:'admin@example.invalid'}}})},from(){let update=null,filters=[];const q={select(){return q},eq(k,v){filters.push([k,v]);return q},is(k,v){filters.push([k,v]);return q},update(p){update=p;patches.push(p);return q},async maybeSingle(){if(readError)return {error:Error('simulated database failure')};if(missing)return {data:null};if(update){assert.equal(filters.length,7);return {data:race?null:{...current,...update}}}return {data:current}}};return q}};
+const mock=(p,exports)=>{let id=require.resolve(p);require.cache[id]={id,filename:id,loaded:true,exports}};
+mock(root+'/node_modules/@supabase/supabase-js',{createClient:()=>client});mock(root+'/dist/lib/supabase',{supabase:client});
+process.env.TAP_TOAST_ADMIN_EMAILS='admin@example.invalid';
+const express=require(root+'/node_modules/express');const app=express();app.use(express.json());app.use(require(root+'/dist/routes/eventRoutes').default);
+(async()=>{const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));try{
+ const post=(value,auth=true)=>fetch('http://127.0.0.1:'+server.address().port+'/update-price',{method:'POST',headers:{'Content-Type':'application/json',...(auth?{Authorization:'Bearer test'}:{})},body:JSON.stringify({eventId:initial.id,custom_total_price:value})});
+ let res=await post(1200);assert.equal(res.status,200);assert.equal((await res.json()).event.balance_due,700);
+ for(const v of ['',null,false,-1,0,1000001,1.001,'abc']) {patches=[];assert.equal((await post(v)).status,400);assert.equal(patches.length,0)}
+ patches=[];assert.equal((await post(400)).status,400);assert.equal(patches.length,0);
+ race=true;assert.equal((await post(1200)).status,409);race=false;
+ missing=true;assert.equal((await post(1200)).status,404);missing=false;
+ patches=[];assert.equal((await post(1200,false)).status,401);assert.equal(patches.length,0);
+ console.log('PASS: unpaid, deposit paid, fully paid, repeated edits, cent rounding, below-paid rejection, input validation, conflict protection, not found and authorization. No live records touched.');
+}finally{server.closeAllConnections();await new Promise(r=>server.close(r))}})().catch(e=>{console.error(e);process.exitCode=1});

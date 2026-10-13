@@ -1,3 +1,4 @@
+import { RESERVED_STATUSES } from "../services/availabilityService"
 import express from "express"
 import { createClient } from "@supabase/supabase-js"
 
@@ -12,7 +13,7 @@ router.get("/availability", async (req, res) => {
   const { data, error } = await supabase
     .from("events")
     .select("event_date")
-    .eq("event_status", "confirmed")
+    .in("event_status", RESERVED_STATUSES)
 
   if (error) {
     console.error(error)

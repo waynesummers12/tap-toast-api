@@ -1,3 +1,4 @@
+import { bookingWindow, hasReservationConflict, CONFLICT_MESSAGE } from "../services/availabilityService"
 import express from "express"
 import { calculateEventPricing } from "../services/pricingService"
 import { supabase } from "../lib/supabase"
@@ -39,6 +40,17 @@ router.post("/book-event", async (req: any, res: any) => {
       hours: Number(hours),
       bartenders: Number(bartenders)
     })
+
+    if (!bookingWindow(event_date, start_time || "18:00", Number(hours))) {
+      return res.status(400).json({ error: "Choose a valid event date, start time, and duration." })
+    }
+    try {
+      if (await hasReservationConflict(supabase, event_date, start_time || "18:00", Number(hours))) {
+        return res.status(409).json({ error: CONFLICT_MESSAGE })
+      }
+    } catch {
+      return res.status(503).json({ error: "We couldn't verify availability. Please try again shortly." })
+    }
 
     // 2️⃣ Create customer
     const { data: customer, error: customerError } = await supabase

@@ -1,3 +1,5 @@
+import { customPricing, PriceValidationError } from "../services/customPricing"
+import { bookingWindow, hasReservationConflict, reservedSlots, CONFLICT_MESSAGE } from "../services/availabilityService"
 import { Router } from "express"
 import { createClient } from "@supabase/supabase-js"
 import {
@@ -85,8 +87,11 @@ function parseCreateEvent(body: any): CreateEventPayload | null {
 
 function parseUpdatePrice(body: any): { eventId: string; custom: number } | null {
   const eventId = body?.eventId || body?.event_id
-  if (!eventId) return null
-  const custom = Number(body?.custom_total_price || 0)
+  const value = body?.custom_total_price
+  if (typeof eventId !== "string" || !UUID_PATTERN.test(eventId) ||
+      (typeof value !== "number" && typeof value !== "string") || String(value).trim() === "") return null
+  const custom = Number(value)
+  if (!Number.isFinite(custom) || custom <= 0 || custom > 1000000 || Math.abs(custom * 100 - Math.round(custom * 100)) > 0.000001) return null
   return { eventId, custom }
 }
 
@@ -126,6 +131,18 @@ router.post("/create", async (req, res) => {
 
     if (!isMountainView && !normalPricing) {
       return res.status(400).json({ error: "Invalid normal pricing selections" })
+    }
+
+    const serviceHours = mountainViewPricing?.serviceHours ?? normalPricing!.hours
+    if (!bookingWindow(parsed.event_date, parsed.start_time, serviceHours)) {
+      return res.status(400).json({ error: "Choose a valid event date, start time, and duration." })
+    }
+    try {
+      if (await hasReservationConflict(supabase, parsed.event_date, parsed.start_time, serviceHours)) {
+        return res.status(409).json({ error: CONFLICT_MESSAGE })
+      }
+    } catch {
+      return res.status(503).json({ error: "We couldn't verify availability. Please try again shortly." })
     }
 
     // 🔥 Create or fetch customer
@@ -277,15 +294,14 @@ router.get("/", requireAdmin, async (req, res) => {
       deposit_amount?: number
       deposit_paid?: boolean
       balance_paid?: boolean
+      balance_due?: number
       bartenders?: number
       hours?: number
     }) => ({
       ...e,
       name: (e.customers as { name?: string } | null)?.name || "Unknown",
       assigned_bartenders_count: e.event_bartenders?.length || 0,
-      balance_remaining: e.balance_paid ? 0 :
-        (e.total_price || 0) -
-        (e.deposit_paid ? (e.deposit_amount || 0) : 0),
+      balance_remaining: e.balance_paid ? 0 : e.deposit_paid ? (e.balance_due || 0) : (e.total_price || 0),
       profit_estimate:
         (e.total_price || 0) - ((e.bartenders || 0) * (e.hours || 0) * 25)
     }))
@@ -300,16 +316,8 @@ router.get("/", requireAdmin, async (req, res) => {
 // GET booked dates (for calendar availability)
 router.get("/booked-dates", async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from("events")
-      .select("event_date")
-      .not("event_date", "is", null)
-
-    if (error) throw error
-
-    const bookedDates = (data || []).map((e: { event_date: string }) =>
-      e.event_date.split("T")[0] // normalize to YYYY-MM-DD
-    )
+    const slots = await reservedSlots(supabase)
+    const bookedDates = [...new Set(slots.map(slot => slot.date))]
 
     res.json({ bookedDates })
   } catch (err) {
@@ -321,30 +329,7 @@ router.get("/booked-dates", async (req, res) => {
 // GET booked time slots (for time-based availability)
 router.get("/booked-slots", async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from("events")
-      .select("event_date, start_time, hours")
-      .eq("event_status", "confirmed")
-
-    if (error) throw error
-
-    const slots = (data || []).map((e: { event_date: string; start_time: string; hours: number }) => {
-      const [hourStr, minuteStr = "0"] = String(e.start_time || "18:00").split(":")
-      const startHour = Number(hourStr)
-      const startMinute = Number(minuteStr)
-
-      const start = new Date(
-        `${e.event_date}T${String(startHour).padStart(2, "0")}:${String(startMinute).padStart(2, "0")}:00`
-      )
-
-      const end = new Date(start.getTime() + (e.hours || 4) * 60 * 60 * 1000)
-
-      return {
-        date: e.event_date.split("T")[0],
-        start: start.toISOString(),
-        end: end.toISOString()
-      }
-    })
+    const slots = await reservedSlots(supabase)
 
     res.json(slots)
   } catch (err) {
@@ -482,31 +467,26 @@ router.post("/update-price", requireAdmin, async (req, res) => {
     }
     const { eventId, custom } = parsed
 
-    // 🔥 Recalculate pricing
-    const total = custom
-    const deposit = total * 0.5
-    const balance = total - deposit
+    const fields = "id,total_price,custom_total_price,deposit_amount,balance_due,deposit_paid,balance_paid"
+    const { data: existing, error: readError } = await supabase.from("events")
+      .select(fields).eq("id", eventId).maybeSingle()
+    if (readError) throw readError
+    if (!existing) return res.status(404).json({ success: false, error: "Event not found" })
 
-    const { error } = await supabase
-      .from("events")
-      .update({
-        custom_total_price: custom > 0 ? custom : null,
-        total_price: total,
-        deposit_amount: deposit,
-        balance_due: balance
-      })
-      .eq("id", eventId)
-
-    if (error) {
-      console.error("Update price error:", error)
-      return res.status(500).json({ success: false })
+    const updates = customPricing(existing, custom)
+    let query = supabase.from("events").update(updates).eq("id", eventId)
+    // Do not overwrite a payment or another price edit that arrived during this request.
+    for (const field of ["total_price", "custom_total_price", "deposit_amount", "balance_due", "deposit_paid", "balance_paid"] as const) {
+      query = existing[field] === null ? query.is(field, null) : query.eq(field, existing[field])
     }
-
-    return res.json({ success: true })
-
+    const { data: updated, error } = await query.select(fields).maybeSingle()
+    if (error) throw error
+    if (!updated) return res.status(409).json({ success: false, error: "This event's price or payment changed while saving. Refresh the event and try again." })
+    return res.json({ success: true, event: updated })
   } catch (err) {
-    console.error(err)
-    return res.status(500).json({ success: false })
+    if (err instanceof PriceValidationError) return res.status(400).json({ success: false, error: err.message })
+    console.error("Update price failed", err)
+    return res.status(500).json({ success: false, error: "Unable to save the new price. Please try again." })
   }
 })
 

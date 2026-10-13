@@ -68,14 +68,22 @@ const getEvent = async (eventId: string) => {
   return event
 }
 
-// CREATE CHECKOUT SESSION (used by dashboard)
+function paymentBlock(event: any, type: "deposit" | "balance"): string | null {
+  if (event.event_status === "cancelled" || event.status === "cancelled") return "This event is cancelled. Please contact Jen."
+  if (event.balance_paid) return "This event is already fully paid."
+  if (type === "deposit" && event.deposit_paid) return "The deposit is already paid."
+  if (type === "balance" && !event.deposit_paid && Number(event.deposit_amount) > 0) return "Collect the deposit before requesting the remaining balance."
+  return null
+}
+
+// Public deposit checkout; balance checkout requires an administrator.
 router.post("/create-checkout-session", requireAdminForNonDeposit, async (req, res) => {
   try {
     const eventId = req.body.eventId || req.body.event_id
     const cid = req.body.cid ? String(req.body.cid) : undefined
 
-    if (!eventId) {
-      return res.status(400).json({ error: "Missing eventId" })
+    if (typeof eventId !== "string" || !UUID_PATTERN.test(eventId)) {
+      return res.status(400).json({ error: "Invalid event ID" })
     }
 
     if (cid && !UUID_PATTERN.test(cid)) {
@@ -89,6 +97,9 @@ router.post("/create-checkout-session", requireAdminForNonDeposit, async (req, r
     }
 
     const event = await getEvent(eventId)
+
+    const blocked = paymentBlock(event, type)
+    if (blocked) return res.status(409).json({ error: blocked })
 
     const isDeposit = type === "deposit"
 
@@ -106,7 +117,6 @@ router.post("/create-checkout-session", requireAdminForNonDeposit, async (req, r
     }
 
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
       mode: "payment",
 
       customer_email: event.customer?.email || event.email || undefined,
@@ -138,6 +148,7 @@ router.post("/create-checkout-session", requireAdminForNonDeposit, async (req, r
       },
     })
 
+    if (!session.url) throw new Error("Stripe did not return a checkout URL")
     res.json({
       success: true, // 🔥 REQUIRED
       url: session.url,
@@ -161,18 +172,12 @@ for (const action of ["deposit", "balance", "invoice"] as const) {
       if (typeof eventId !== "string" || !UUID_PATTERN.test(eventId) || typeof requestId !== "string" || !UUID_PATTERN.test(requestId))
         return res.status(400).json({error:"Invalid event or request ID"})
       const event = await getEvent(eventId)
-      if (event.event_status === "cancelled" || event.status === "cancelled")
-        return res.status(409).json({error:"This event is cancelled."})
       const recipient = String(event.customer?.email || event.email || "").trim()
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient))
         return res.status(400).json({error:"Add a valid customer email before sending a payment request."})
-      if (event.balance_paid)
-        return res.status(409).json({error:"This event is already fully paid."})
       const type = action === "invoice" ? (event.deposit_paid ? "balance" : "deposit") : action
-      if (type === "deposit" && event.deposit_paid)
-        return res.status(409).json({error:"The deposit is already paid."})
-      if (type === "balance" && !event.deposit_paid && Number(event.deposit_amount) > 0)
-        return res.status(409).json({error:"Collect the deposit before requesting the remaining balance."})
+      const blocked = paymentBlock(event, type)
+      if (blocked) return res.status(409).json({error:blocked})
       const amountCents = Math.round(Number(type === "deposit" ? event.deposit_amount : event.balance_due) * 100)
       if (!Number.isSafeInteger(amountCents) || amountCents <= 0)
         return res.status(400).json({error:`No valid ${type} amount is due.`})

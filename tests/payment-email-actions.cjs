@@ -19,6 +19,31 @@ for(const action of ['deposit','invoice','balance']){
  if(action==='invoice'){assert.match(emails[0].subject,/Invoice/);assert.match(emails[0].html,/\$720.00/);assert.match(emails[0].html,/Deposit requested now/)}
 }
 event.deposit_paid=false;assert.equal(JSON.stringify(event),state);
+// Public checkout safeguards: assert rejected requests never reach Stripe.
+const publicCheckout=(type,authenticated=false,overrides={})=>fetch('http://127.0.0.1:'+server.address().port+'/create-checkout-session',{method:'POST',headers:{'Content-Type':'application/json',...(authenticated?{Authorization:'Bearer test'}:{})},body:JSON.stringify({event_id:event.id,type,...overrides})});
+async function blockedCheckout(type,status,authenticated=false,overrides={}) {
+ const before=sessions.length; const response=await publicCheckout(type,authenticated,overrides);
+ assert.equal(response.status,status); assert.equal(sessions.length,before);
+}
+const originalEvent=JSON.stringify(event);
+let checkout=await publicCheckout('deposit');assert.equal(checkout.status,200);
+assert.equal(sessions.at(-1).line_items[0].price_data.unit_amount,36000);
+assert.equal(sessions.at(-1).metadata.type,'deposit');assert(!sessions.at(-1).payment_method_types);
+assert.equal(JSON.stringify(event),originalEvent);
+event.deposit_paid=true;await blockedCheckout('deposit',409);
+checkout=await publicCheckout('balance',true);assert.equal(checkout.status,200);
+assert.equal(sessions.at(-1).metadata.type,'balance');
+event.balance_paid=true;await blockedCheckout('deposit',409);await blockedCheckout('balance',409,true);
+event.balance_paid=false;event.deposit_paid=false;
+for(const field of ['event_status','status']) {
+ event[field]='cancelled'; await blockedCheckout('deposit',409);await blockedCheckout('balance',409,true);delete event[field];
+}
+await blockedCheckout('balance',409,true);await blockedCheckout('balance',401);
+await blockedCheckout('deposit',400,false,{event_id:'invalid'});
+event.deposit_amount=0;await blockedCheckout('deposit',400);event.deposit_amount=360;
+event.deposit_paid=true;event.balance_due=0;await blockedCheckout('balance',400,true);
+event.balance_due=360;event.deposit_paid=false;
+assert.equal(JSON.stringify(event),originalEvent);
 rejectEmail=true;
 for(const action of ['deposit','invoice','balance']){event.deposit_paid=action==='balance';assert.equal((await post('/send-'+action,action)).status,502)}
 rejectEmail=false;
