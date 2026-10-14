@@ -44,6 +44,9 @@ event.deposit_amount=0;await blockedCheckout('deposit',400);event.deposit_amount
 event.deposit_paid=true;event.balance_due=0;await blockedCheckout('balance',400,true);
 event.balance_due=360;event.deposit_paid=false;
 assert.equal(JSON.stringify(event),originalEvent);
+event.deposit_amount=0;event.balance_due=720;event.deposit_paid=false;
+let zeroInvoice=await post('/send-invoice','invoice');assert.equal(zeroInvoice.status,200);assert.equal(sessions.at(-1).metadata.type,'balance');assert.equal(sessions.at(-1).line_items[0].price_data.unit_amount,72000);assert.equal(event.deposit_paid,false);
+event.deposit_amount=360;event.balance_due=360;
 rejectEmail=true;
 for(const action of ['deposit','invoice','balance']){event.deposit_paid=action==='balance';assert.equal((await post('/send-'+action,action)).status,502)}
 rejectEmail=false;

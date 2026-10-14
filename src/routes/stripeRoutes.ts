@@ -175,12 +175,12 @@ for (const action of ["deposit", "balance", "invoice"] as const) {
       const recipient = String(event.customer?.email || event.email || "").trim()
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient))
         return res.status(400).json({error:"Add a valid customer email before sending a payment request."})
-      const type = action === "invoice" ? (event.deposit_paid ? "balance" : "deposit") : action
+      const type = action === "invoice" ? (event.deposit_paid || Number(event.deposit_amount) === 0 ? "balance" : "deposit") : action
       const blocked = paymentBlock(event, type)
       if (blocked) return res.status(409).json({error:blocked})
       const amountCents = Math.round(Number(type === "deposit" ? event.deposit_amount : event.balance_due) * 100)
       if (!Number.isSafeInteger(amountCents) || amountCents <= 0)
-        return res.status(400).json({error:`No valid ${type} amount is due.`})
+        return res.status(400).json({error:type === "deposit" ? "No deposit is set. Open View to enter a deposit amount, or send an invoice for the full balance." : "No valid balance amount is due."})
       const key = `admin-${action}-${eventId}-${requestId}`
       const session = await stripe.checkout.sessions.create({
         mode:"payment", customer_email:recipient,

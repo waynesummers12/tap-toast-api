@@ -473,7 +473,10 @@ router.post("/update-price", requireAdmin, async (req, res) => {
     if (readError) throw readError
     if (!existing) return res.status(404).json({ success: false, error: "Event not found" })
 
-    const updates = customPricing(existing, custom)
+    const depositInput = req.body.deposit_amount
+    if (depositInput !== undefined && (typeof depositInput !== "number" || !Number.isFinite(depositInput) || depositInput < 0 || depositInput > custom || Math.abs(depositInput * 100 - Math.round(depositInput * 100)) > 0.000001))
+      return res.status(400).json({ success: false, error: "Enter a deposit between $0 and the event total, with no more than two decimal places." })
+    const updates = customPricing(existing, custom, depositInput)
     let query = supabase.from("events").update(updates).eq("id", eventId)
     // Do not overwrite a payment or another price edit that arrived during this request.
     for (const field of ["total_price", "custom_total_price", "deposit_amount", "balance_due", "deposit_paid", "balance_paid"] as const) {

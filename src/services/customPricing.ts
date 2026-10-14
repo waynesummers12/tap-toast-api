@@ -16,7 +16,7 @@ function cents(value: unknown): number {
   return Math.round(n * 100)
 }
 
-export function customPricing(event: ExistingPrice, newTotal: number) {
+export function customPricing(event: ExistingPrice, newTotal: number, requestedDeposit?: number) {
   const total = cents(newTotal)
   const previousTotal = cents(event.custom_total_price ?? event.total_price)
   const previousDeposit = cents(event.deposit_amount)
@@ -28,7 +28,12 @@ export function customPricing(event: ExistingPrice, newTotal: number) {
   if (total < paid) throw new PriceValidationError(`The new total cannot be less than the $${(paid / 100).toFixed(2)} already paid. Review any refund separately.`)
 
   // An unpaid deposit can be recalculated. A received deposit is historical money.
-  const deposit = event.deposit_paid || event.balance_paid ? previousDeposit : Math.round(total / 2)
+  const deposit = requestedDeposit === undefined
+    ? (event.deposit_paid || event.balance_paid ? previousDeposit : Math.round(total / 2))
+    : cents(requestedDeposit)
+  if (deposit > total) throw new PriceValidationError("The deposit cannot exceed the event total.")
+  if ((event.deposit_paid || event.balance_paid) && deposit !== previousDeposit)
+    throw new PriceValidationError("A deposit already received cannot be changed here.")
   return {
     custom_total_price: total / 100,
     total_price: total / 100,
