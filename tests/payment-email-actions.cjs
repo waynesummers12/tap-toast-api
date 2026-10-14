@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict'); const root=require('node:path').resolve(__dirname,'..');
 const mockModule=(p,exports)=>{const id=require.resolve(p);require.cache[id]={id,filename:id,loaded:true,exports}};
-let sessions=[],emails=[],rejectEmail=false;
-class Stripe {constructor(){this.checkout={sessions:{create:async p=>{sessions.push(p);return {url:'https://example.invalid/checkout'}}}}}}
+let sessions=[],emails=[],rejectEmail=false,rejectStripe=false;
+class Stripe {constructor(){this.checkout={sessions:{create:async p=>{if(rejectStripe)throw Object.assign(new Error('Secret provider details'),{type:'StripeAuthenticationError',code:'api_key_expired',statusCode:401});sessions.push(p);return {url:'https://example.invalid/checkout'}}}}}}
 class Resend {constructor(){this.emails={send:async p=>{emails.push(p);return rejectEmail?{error:{message:'Simulated provider rejection'}}:{data:{id:'fake'}}}}}}
 mockModule(root+'/node_modules/stripe',Stripe);mockModule(root+'/node_modules/resend',{Resend});
 const event={id:'11111111-1111-4111-8111-111111111111',deposit_amount:360,balance_due:360,total_price:720,deposit_paid:false,balance_paid:false,event_date:'2026-11-22',customer:{name:'Test',email:'test@example.invalid'}};
@@ -10,6 +10,15 @@ process.env.TAP_TOAST_ADMIN_EMAILS='admin@example.invalid';const express=require
 const app=express();app.use(express.json());app.use(require(root+'/dist/routes/stripeRoutes').default);
 (async()=>{const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));try{const post=(path,type)=>fetch('http://127.0.0.1:'+server.address().port+path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer test'},body:JSON.stringify({event_id:event.id,type})});
 const state=JSON.stringify(event);
+rejectStripe=true;
+for(const action of ['deposit','invoice','balance']) {
+ event.deposit_paid=action==='balance';
+ const response=await post('/send-'+action,action);assert.equal(response.status,503);
+ const body=await response.json();assert.match(body.error,/STRIPE_SECRET_KEY/);assert(!body.error.includes('Secret provider details'));
+}
+assert.equal(emails.length,0);assert.equal(sessions.length,0);
+event.deposit_paid=false;rejectStripe=false;
+
 for(const action of ['deposit','invoice','balance']){
  event.deposit_paid=action==='balance';emails=[];
  let r=await post('/send-'+action,action);assert.equal(r.status,200);assert.equal(emails.length,1);

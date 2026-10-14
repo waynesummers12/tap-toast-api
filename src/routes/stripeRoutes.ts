@@ -76,6 +76,17 @@ function paymentBlock(event: any, type: "deposit" | "balance"): string | null {
   return null
 }
 
+function stripeCredentialsRejected(error: unknown): boolean {
+  const failure = error as { type?: string; code?: string; raw?: { code?: string } } | null
+  return failure?.type === "StripeAuthenticationError" || failure?.code === "api_key_expired" || failure?.raw?.code === "api_key_expired"
+}
+
+function logPaymentFailure(context: string, error: unknown) {
+  const failure = error as { type?: string; code?: string; statusCode?: number } | null
+  // Provider error messages can contain credentials or customer information.
+  console.error(context, { type: failure?.type, code: failure?.code, statusCode: failure?.statusCode })
+}
+
 // Public deposit checkout; balance checkout requires an administrator.
 router.post("/create-checkout-session", requireAdminForNonDeposit, async (req, res) => {
   try {
@@ -155,7 +166,8 @@ router.post("/create-checkout-session", requireAdminForNonDeposit, async (req, r
     })
 
   } catch (err) {
-    console.error("Stripe session error", err)
+    logPaymentFailure("Stripe session error", err)
+    if (stripeCredentialsRejected(err)) return res.status(503).json({ error: "Online payments are temporarily unavailable. Please contact Jen for help." })
     res.status(500).json({ error: "Failed to create session" })
   }
 })
@@ -212,7 +224,8 @@ for (const action of ["deposit", "balance", "invoice"] as const) {
       })
       return res.json({success:true,recipient,payment_type:type})
     } catch (error) {
-      console.error(`Send ${action} failed`, error)
+      logPaymentFailure(`Send ${action} failed`, error)
+      if (stripeCredentialsRejected(error)) return res.status(503).json({error:"Stripe rejected the server’s payment key. Update STRIPE_SECRET_KEY in Render and redeploy the API, then try again. No email was sent and payment status has not changed."})
       return res.status(502).json({error:"The payment email could not be sent. Please retry; payment status has not changed."})
     }
   })
