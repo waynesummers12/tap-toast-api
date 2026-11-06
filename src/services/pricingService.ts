@@ -143,8 +143,10 @@ export function calculateMountainViewPricing(
 
   const selectedPackage = MOUNTAIN_VIEW_PACKAGES[packageKey]
 
-  const staffingFee = guests >= 101 ? 250 : 0
-  const bartendersNeeded = guests >= 101 ? 2 : 1
+  // Signature has a fixed venue price regardless of guest count.
+  const needsAdditionalBartender = packageKey === "classic" && guests >= 101
+  const staffingFee = needsAdditionalBartender ? 250 : 0
+  const bartendersNeeded = needsAdditionalBartender ? 2 : 1
   const totalPrice = selectedPackage.price + staffingFee
   const depositAmount = totalPrice * 0.5
   const balanceDue = totalPrice - depositAmount
